@@ -3,6 +3,7 @@ import 'package:example/components/action_tile.dart';
 import 'package:example/components/select_device_dialog.dart';
 import 'package:example/main.dart';
 import 'package:example/models/audio_state.dart';
+import 'package:example/pages/audio_graph_page.dart';
 import 'package:example/pages/loopback_page.dart';
 import 'package:example/pages/player_page.dart';
 import 'package:example/pages/recorder_page.dart';
@@ -61,6 +62,12 @@ class _MainPageState extends State<MainPage> {
                   ),
                 ),
               ),
+              ActionTile(
+                title: 'Audio Graph Test',
+                body: 'As title',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => AudioGraphPage(audio: widget.audio))),
+              )
             ],
           ),
         ),
