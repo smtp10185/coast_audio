@@ -1,0 +1,312 @@
+import 'package:coast_audio/src/engine/clip_owner.dart';
+import 'package:coast_audio/src/engine/track_item.dart';
+import 'package:music_core/music_core.dart';
+
+class ClipTrack extends Track with ClipOwner {
+  List<CollectionClip> collectionClips = [];
+  bool trackItemsDirty = false;
+  List<TrackItem> trackItems = [];
+
+  ClipTrack(Edit edit, bool hasModifierList) : super(edit, hasModifierList) {
+    // 初始化CollectionClipList
+  }
+
+  void initialise() {
+    initialiseClipOwner(edit);
+    super.initialise();
+  }
+
+  void flushStateToValueTree() {
+    super.flushStateToValueTree();
+    for (var clip in getClips()) {
+      clip.flushStateToValueTree();
+    }
+  }
+
+  int getNumTrackItems() {
+    refreshTrackItems();
+    return trackItems.length;
+  }
+
+  TrackItem getTrackItem(int idx) {
+    refreshTrackItems();
+    return trackItems[idx];
+  }
+
+  int indexOfTrackItem(TrackItem ti) {
+    refreshTrackItems();
+    return trackItems.indexOf(ti);
+  }
+
+  int getIndexOfNextTrackItemAt(TimePosition time) {
+    refreshTrackItems();
+    return findIndexOfNextItemAt(trackItems, time);
+  }
+
+  TrackItem getNextTrackItemAt(TimePosition time) {
+    refreshTrackItems();
+    return trackItems[getIndexOfNextTrackItemAt(time)];
+  }
+
+  TimeDuration getLength() {
+    return toDuration(getTotalRange().end);
+  }
+
+  TimeDuration getLengthIncludingInputTracks() {
+    var length = getLength();
+    for (var track in getAudioTracks(edit)) {
+      if (track != this && track.getOutput().getDestinationTrack() == this) {
+        length = max(length, track.getLengthIncludingInputTracks());
+      }
+    }
+    return length;
+  }
+
+  TimeRange getTotalRange() {
+    return findUnionOfEditTimeRanges(getClips());
+  }
+
+  bool addClip(Clip clip) {
+    if (clip != null) {
+      if (getClips().length <
+          edit.engine.getEngineBehaviour().getEditLimits().maxClipsInTrack) {
+        assert(findClipForID(clip.itemID) == null);
+        var um = clip.getUndoManager();
+        clip.state.getParent().removeChild(clip.state, um);
+        state.addChild(clip.state, -1, um);
+        changed();
+        return true;
+      } else {
+        clip.edit.engine
+            .getUIBehaviour()
+            .showWarningMessage("Can't add any more clips to this track!");
+      }
+    }
+    return false;
+  }
+
+  void addCollectionClip(CollectionClip cc) {
+    // 如果此集合剪辑已自动创建，则将其删除
+    collectionClips.removeWhere(
+        (existingClip) => existingClip.containsClip(cc.getClip(0)));
+    collectionClips.add(cc);
+  }
+
+  void removeCollectionClip(CollectionClip cc) {
+    collectionClips.remove(cc);
+  }
+
+  Clip insertClipWithState(ValueTree clipState) {
+    return engine.insertClipWithState(this, clipState);
+  }
+
+  Clip insertClipWithState(
+      ValueTree stateToUse,
+      String name,
+      TrackItemType type,
+      ClipPosition position,
+      bool deleteExistingClips,
+      bool allowSpottingAdjustment) {
+    return engine.insertClipWithState(this, stateToUse, name, type, position,
+        deleteExistingClips, allowSpottingAdjustment);
+  }
+
+  WaveAudioClip insertWaveClip(String name, File sourceFile,
+      ClipPosition position, bool deleteExistingClips) {
+    return engine.insertWaveClip(
+        this, name, sourceFile, position, deleteExistingClips);
+  }
+
+  MidiClip insertMIDIClip(
+      String name, TimeRange position, SelectionManager sm) {
+    var newClip = engine.insertMIDIClip(this, name, position);
+    if (newClip != null && sm != null) {
+      sm.selectOnly(newClip);
+      sm.keepSelectedObjectsOnScreen();
+    }
+    return newClip;
+  }
+
+  EditClip insertEditClip(TimeRange position, ProjectItemID sourceID) {
+    return engine.insertEditClip(this, position, sourceID);
+  }
+
+  void deleteRegion(TimeRange range, SelectionManager sm) {
+    var newClips = engine.deleteRegion(this, range);
+    if (sm != null) {
+      for (var newClip in newClips) {
+        sm.addToSelection(newClip);
+      }
+    }
+  }
+
+  void deleteRegionOfClip(Clip c, TimeRange range, SelectionManager sm) {
+    assert(c != null);
+    var newClips = engine.deleteRegion(c, range);
+    if (sm != null) {
+      for (var newClip in newClips) {
+        sm.addToSelection(newClip);
+      }
+    }
+  }
+
+  Clip insertNewClip(
+      TrackItemType type, String name, TimeRange pos, SelectionManager sm) {
+    return insertNewClip(type, name, ClipPosition(pos, TimeDuration.zero), sm);
+  }
+
+  Clip insertNewClip(TrackItemType type, String name, ClipPosition position,
+      SelectionManager sm) {
+    var newClip =
+        insertClipWithState(ValueTree(), name, type, position, false, false);
+    if (newClip != null && sm != null) {
+      sm.selectOnly(newClip);
+      sm.keepSelectedObjectsOnScreen();
+    }
+    return newClip;
+  }
+
+  bool containsAnyMIDIClips() {
+    return engine.containsAnyMIDIClips(this);
+  }
+
+  ValueTree getClipOwnerState() {
+    return state;
+  }
+
+  EditItemID getClipOwnerID() {
+    return itemID;
+  }
+
+  Selectable getClipOwnerSelectable() {
+    return this;
+  }
+
+  Edit getClipOwnerEdit() {
+    return edit;
+  }
+
+  void clipCreated(Clip c) {
+    if (c.isGrouped()) {
+      collectionClipList.clipCreated(c);
+    }
+    trackItemsDirty = true;
+  }
+
+  void clipAddedOrRemoved() {
+    changed();
+    setFrozen(false, Track.groupFreeze);
+    trackItemsDirty = true;
+  }
+
+  void clipOrderChanged() {
+    changed();
+    setFrozen(false, Track.groupFreeze);
+    trackItemsDirty = true;
+  }
+
+  void clipPositionChanged() {
+    trackItemsDirty = true;
+  }
+
+  Clip splitClip(Clip clip, TimePosition time) {
+    return split(clip, time);
+  }
+
+  void splitAt(TimePosition time) {
+    engine.split(this, time);
+  }
+
+  void insertSpaceIntoTrack(TimePosition time, TimeDuration amountOfSpace) {
+    Track.insertSpaceIntoTrack(time, amountOfSpace);
+    List<Clip> clipsToDo = [];
+    var clips = getClips();
+    for (var i = clips.length - 1; i >= 0; i--) {
+      var c = clips[i];
+      if (c.getPosition().time.getCentre() >= time) {
+        clipsToDo.add(c);
+      } else {
+        break;
+      }
+    }
+    for (var c in clipsToDo) {
+      c.setStart(c.getPosition().getStart() + amountOfSpace, false, true);
+    }
+  }
+
+  List<TimePosition> findAllTimesOfInterest() {
+    List<TimePosition> cuts = [];
+    for (var o in getClips()) {
+      cuts.addAll(o.getInterestingTimes());
+    }
+    cuts.sort();
+    return cuts;
+  }
+
+  TimePosition getNextTimeOfInterest(TimePosition t) {
+    if (t < TimePosition.zero) {
+      return TimePosition.zero;
+    }
+    for (var c in findAllTimesOfInterest()) {
+      if (c > t + TimeDuration.fromSeconds(0.0001)) {
+        return c;
+      }
+    }
+    return toPosition(getLength());
+  }
+
+  TimePosition getPreviousTimeOfInterest(TimePosition t) {
+    if (t < TimePosition.zero) {
+      return TimePosition.zero;
+    }
+    var cuts = findAllTimesOfInterest();
+    for (var i = cuts.length - 1; i >= 0; i--) {
+      if (cuts[i] < t - TimeDuration.fromSeconds(0.0001)) {
+        return cuts[i];
+      }
+    }
+    return TimePosition.zero;
+  }
+
+  bool containsPlugin(Plugin plugin) {
+    if (pluginList.contains(plugin)) {
+      return true;
+    }
+    for (var c in getClips()) {
+      var plugins = c.getPluginList();
+      if (plugins != null && plugins.contains(plugin)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  List<Plugin> getAllPlugins() {
+    var destArray = super.getAllPlugins();
+    for (var c in getClips()) {
+      destArray.addAll(c.getAllPlugins());
+      if (c is ContainerClip) {
+        for (var childClip in c.getClips()) {
+          destArray.addAll(childClip.getAllPlugins());
+        }
+      }
+    }
+    return destArray;
+  }
+
+  void sendMirrorUpdateToAllPlugins(Plugin p) {
+    pluginList.sendMirrorUpdateToAllPlugins(p);
+    for (var c in getClips()) {
+      c.sendMirrorUpdateToAllPlugins(p);
+    }
+  }
+
+  bool areAnyClipsUsingFile(AudioFile af) {
+    for (var c in getClips()) {
+      if (c is AudioClipBase && c.isUsingFile(af)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}

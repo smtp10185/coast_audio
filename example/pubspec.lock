@@ -492,6 +492,20 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.6"
+  music_core:
+    dependency: transitive
+    description:
+      path: "../../music_core/music_core"
+      relative: true
+    source: path
+    version: "1.0.0"
+  music_notes:
+    dependency: transitive
+    description:
+      path: "../../music_core/music_notes"
+      relative: true
+    source: path
+    version: "0.19.1"
   package_config:
     dependency: transitive
     description:
@@ -713,6 +727,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.2.0"
+  synchronized:
+    dependency: transitive
+    description:
+      name: synchronized
+      sha256: "69fe30f3a8b04a0be0c15ae6490fc859a78ef4c43ae2dd5e8a623d45bfcf9225"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.3.0+3"
   term_glyph:
     dependency: transitive
     description:
@@ -810,5 +832,5 @@ packages:
     source: hosted
     version: "3.1.2"
 sdks:
-  dart: ">=3.5.0 <4.0.0"
+  dart: ">=3.5.3 <4.0.0"
   flutter: ">=3.24.0"

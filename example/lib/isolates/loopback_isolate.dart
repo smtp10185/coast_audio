@@ -9,7 +9,7 @@ enum LoopbackHostRequest {
   stats,
 }
 
-class LoopbackStatsResponse {
+class LoopbackStatsResponse{
   const LoopbackStatsResponse({
     required this.inputStability,
     required this.outputStability,
