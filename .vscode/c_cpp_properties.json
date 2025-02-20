@@ -1,12 +1,31 @@
 {
     "configurations": [
         {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/native/miniaudio",
+                "${workspaceFolder}/native/miniaudio/extras"
+            ],
+            "defines": [
+                "MA_NO_PTHREAD_IN_HEADER",
+                "_WIN32",
+                "_WIN64",
+                "_MSC_VER",
+                "_M_X64",
+                "_MSVC_LANG=201703L"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
+        },
+        {
             "name": "Mac",
             "includePath": [
                 "${workspaceFolder}/native/src/**",
                 "${workspaceFolder}/native/miniaudio/extras/miniaudio_split/**"
             ],
-            "defines": [],
+            "defines": [
+            ],
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "macos-clang-arm64"

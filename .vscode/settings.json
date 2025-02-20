@@ -6,6 +6,10 @@
   "files.associations": {
     "locale": "c",
     "__config": "c",
-    "dart_types.h": "c"
+    "dart_types.h": "c",
+    "miniaudio_libopus.h": "c",
+    "miniaudio.h": "c",
+    "ca_context.h": "c"
   },
+  "cmake.sourceDirectory": "C:/Users/Bert/GitHub/faso/packages/coast_audio/native",
 }
