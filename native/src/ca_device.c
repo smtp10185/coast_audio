@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <dlfcn.h>
 #include <stdio.h>
 #include "ca_device.h"
 #include "ca_defs.h"
@@ -28,7 +27,8 @@ static inline ma_result read_ring_buffer(ca_device *pDevice, void *pOutput, ma_u
             return result;
         }
 
-        CA_COPY_MEMORY(pOutput + (bpf * framesRead), pBuffer, bpf * actualRead);
+        // Cast pOutput to char* for pointer arithmetic
+        memcpy(((char*)pOutput) + (bpf * framesRead), (const char*)pBuffer, bpf * actualRead);
 
         result = ma_pcm_rb_commit_read(&pDevice->buffer, actualRead);
         if (result != MA_SUCCESS && result != MA_AT_END)
@@ -75,7 +75,8 @@ static inline ma_result write_ring_buffer(ca_device *pDevice, const void *pInput
             return result;
         }
 
-        CA_COPY_MEMORY(pBuffer, pInput + (bpf * framesWrite), bpf * actualWrite);
+        // Cast pInput to const char* for pointer arithmetic
+        memcpy(pBuffer, ((const char*)pInput) + (bpf * framesWrite), bpf * actualWrite);
 
         result = ma_pcm_rb_commit_write(&pDevice->buffer, actualWrite);
         if (result != MA_SUCCESS && result != MA_AT_END)
