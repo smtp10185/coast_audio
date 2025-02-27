@@ -1,0 +1,22 @@
+#pragma once
+
+#if __APPLE__
+#define MA_NO_RUNTIME_LINKING
+#endif
+
+#if _WIN32
+#define MA_NO_PTHREAD_IN_HEADER
+#endif
+
+#define MA_NO_NODE_GRAPH
+#define MA_NO_RESOURCE_MANAGER
+#define MA_NO_ENGINE
+
+#include "miniaudio.h"
+#include "ca_dart.h"
+#include "ca_context.h"
+#include "ca_device.h"
+#include "ca_log.h"
+#include "ca_export.h"
+
+CA_API void coast_audio_get_version(char *pMajor, char *pMinor, char *pPatch);
