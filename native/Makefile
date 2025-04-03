@@ -10,7 +10,3 @@ build_android:
 build_linux:
 	@rm -rf build
 	@./scripts/linux_build.sh
-
-build_windows:
-	@rmdir /S /Q build
-	@scripts\windows_build.bat

@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-        "stdio.h": "c",
-        "ca_device.h": "c",
-        "ca_defs.h": "c"
-    }
-}
