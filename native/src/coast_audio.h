@@ -4,10 +4,6 @@
 #define MA_NO_RUNTIME_LINKING
 #endif
 
-#if _WIN32
-#define MA_NO_PTHREAD_IN_HEADER
-#endif
-
 #define MA_NO_NODE_GRAPH
 #define MA_NO_RESOURCE_MANAGER
 #define MA_NO_ENGINE
