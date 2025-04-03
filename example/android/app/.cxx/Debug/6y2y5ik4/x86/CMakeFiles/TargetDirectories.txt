@@ -1,2 +1,0 @@
-C:/Users/Bert/GitHub/faso/packages/coast_audio/example/android/app/.cxx/Debug/6y2y5ik4/x86/CMakeFiles/edit_cache.dir
-C:/Users/Bert/GitHub/faso/packages/coast_audio/example/android/app/.cxx/Debug/6y2y5ik4/x86/CMakeFiles/rebuild_cache.dir
