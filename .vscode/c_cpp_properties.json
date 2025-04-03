@@ -3,9 +3,8 @@
         {
             "name": "Win32",
             "includePath": [
-                "${workspaceFolder}/native/src/**",
-                "${workspaceFolder}/native/miniaudio/extras/miniaudio_split/**",
-                "${workspaceFolder}/native/miniaudio/extras/**"
+                "${workspaceFolder}/native/miniaudio",
+                "${workspaceFolder}/native/miniaudio/extras"
             ],
             "defines": [
                 "MA_NO_PTHREAD_IN_HEADER",
@@ -23,8 +22,7 @@
             "name": "Mac",
             "includePath": [
                 "${workspaceFolder}/native/src/**",
-                "${workspaceFolder}/native/miniaudio/extras/miniaudio_split/**",
-                "${workspaceFolder}/native/miniaudio/extras/**"
+                "${workspaceFolder}/native/miniaudio/extras/miniaudio_split/**"
             ],
             "defines": [
             ],
