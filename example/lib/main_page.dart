@@ -3,6 +3,7 @@ import 'package:example/components/action_tile.dart';
 import 'package:example/components/select_device_dialog.dart';
 import 'package:example/main.dart';
 import 'package:example/models/audio_state.dart';
+import 'package:example/pages/daw_page.dart';
 import 'package:example/pages/loopback_page.dart';
 import 'package:example/pages/player_page.dart';
 import 'package:example/pages/recorder_page.dart';
