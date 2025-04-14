@@ -13,7 +13,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isAndroid || Platform.isIOS) {
     final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration(avAudioSessionCategory: AVAudioSessionCategory.playAndRecord));
+    await session.configure(const AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playAndRecord));
     await session.setActive(true);
   }
 
@@ -49,7 +50,8 @@ class AppState extends State<App> {
       ),
       home: switch (_state) {
         AudioStateInitial() => const BackendPage(),
-        AudioStateConfigured() => MainPage(audio: _state as AudioStateConfigured),
+        AudioStateConfigured() =>
+          MainPage(audio: _state as AudioStateConfigured),
       },
     );
   }

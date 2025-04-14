@@ -29,6 +29,7 @@ ffigen:
     - "-Inative/miniaudio/extras/miniaudio_split"
   headers:
     entry-points:
+      - "native/src/export.h"
       - "native/src/coast_audio.h"
       - "native/src/ca_dart.h"
       - "native/src/ca_context.h"

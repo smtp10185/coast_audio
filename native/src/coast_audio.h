@@ -13,5 +13,6 @@
 #include "ca_context.h"
 #include "ca_device.h"
 #include "ca_log.h"
+#include "export.h"
 
-void coast_audio_get_version(char *pMajor, char *pMinor, char *pPatch);
+CA_API void coast_audio_get_version(char *pMajor, char *pMinor, char *pPatch);

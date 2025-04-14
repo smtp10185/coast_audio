@@ -13,17 +13,18 @@ dependencies:
   coast_audio:
     path: ../
   cupertino_icons: ^1.0.6
-  permission_handler: ^11.3.0
-  audio_session: ^0.1.18
+  permission_handler: ^12.0.0+1
+  audio_session: ^0.2.0
   file_selector: ^1.0.3
   path_provider: ^2.1.2
   path: ^1.9.0
   equatable: ^2.0.5
+  win32: ^5.4.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true

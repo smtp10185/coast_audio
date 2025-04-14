@@ -1,5 +1,6 @@
 #include "miniaudio.h"
 #include "ca_dart.h"
+#include "export.h"
 
 #define CA_LOG_MESSAGE_BUFFER_COUNT 256
 
@@ -20,14 +21,14 @@ typedef struct ca_log
     ca_log_message messages[CA_LOG_MESSAGE_BUFFER_COUNT];
 } ca_log;
 
-ma_result ca_log_init(ca_log *pLog);
+CA_API ma_result ca_log_init(ca_log *pLog);
 
-ma_log *ca_log_get_ref(ca_log *pLog);
+CA_API ma_log *ca_log_get_ref(ca_log *pLog);
 
-void ca_log_get_messages(ca_log *pLog, ca_log_message **ppMessages, ma_uint32 *pCount);
+CA_API void ca_log_get_messages(ca_log *pLog, ca_log_message **ppMessages, ma_uint32 *pCount);
 
-void ca_log_release_messages(ca_log *pLog, ma_uint32 count);
+CA_API void ca_log_release_messages(ca_log *pLog, ma_uint32 count);
 
-void ca_log_set_notification(ca_log *pLog, Dart_Port_DL portId);
+CA_API void ca_log_set_notification(ca_log *pLog, Dart_Port_DL portId);
 
-void ca_log_uninit(ca_log *pLog);
+CA_API void ca_log_uninit(ca_log *pLog);

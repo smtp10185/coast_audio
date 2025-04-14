@@ -1,6 +1,6 @@
 #include "ca_context.h"
 
-ma_result ca_context_init(const ma_backend backends[], ma_uint32 backendCount, const ma_context_config *pConfig, ca_context *pContext)
+CA_API ma_result ca_context_init(const ma_backend backends[], ma_uint32 backendCount, const ma_context_config *pConfig, ca_context *pContext)
 {
     pContext->pRef = NULL;
 
@@ -16,12 +16,12 @@ ma_result ca_context_init(const ma_backend backends[], ma_uint32 backendCount, c
     return MA_SUCCESS;
 }
 
-ma_context *ca_context_get_ref(ca_context *pContext)
+CA_API ma_context *ca_context_get_ref(ca_context *pContext)
 {
     return (ma_context *)pContext->pRef;
 }
 
-ma_result ca_context_uninit(ca_context *pContext)
+CA_API ma_result ca_context_uninit(ca_context *pContext)
 {
     if (pContext->pRef == NULL)
     {

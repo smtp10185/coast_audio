@@ -1,7 +1,7 @@
 #include <string.h>
 #include "ca_log.h"
 
-void ca_log_callback(void *pUserData, ma_log_level level, const char *message)
+void ca_log_callback(void *pUserData, ma_uint32 level, const char *message)
 {
     ca_log *pLog = (ca_log *)pUserData;
 
@@ -30,7 +30,7 @@ void ca_log_callback(void *pUserData, ma_log_level level, const char *message)
     ma_mutex_unlock(&pLog->lock);
 }
 
-ma_result ca_log_init(ca_log *pLog)
+CA_API ma_result ca_log_init(ca_log *pLog)
 {
     pLog->portId = 0;
     pLog->hasNotification = MA_FALSE;
@@ -58,18 +58,18 @@ ma_result ca_log_init(ca_log *pLog)
     return ma_log_register_callback(&pLog->log, callback);
 }
 
-ma_log *ca_log_get_ref(ca_log *pLog)
+CA_API ma_log *ca_log_get_ref(ca_log *pLog)
 {
     return &pLog->log;
 }
 
-void ca_log_get_messages(ca_log *pLog, ca_log_message **ppMessages, ma_uint32 *pCount)
+CA_API void ca_log_get_messages(ca_log *pLog, ca_log_message **ppMessages, ma_uint32 *pCount)
 {
     *ppMessages = &pLog->messages[0];
     *pCount = pLog->messageCount > *pCount ? *pCount : pLog->messageCount;
 }
 
-void ca_log_release_messages(ca_log *pLog, ma_uint32 count)
+CA_API void ca_log_release_messages(ca_log *pLog, ma_uint32 count)
 {
     ma_mutex_lock(&pLog->lock);
 
@@ -90,13 +90,13 @@ void ca_log_release_messages(ca_log *pLog, ma_uint32 count)
     ma_mutex_unlock(&pLog->lock);
 }
 
-void ca_log_set_notification(ca_log *pLog, Dart_Port_DL portId)
+CA_API void ca_log_set_notification(ca_log *pLog, Dart_Port_DL portId)
 {
     pLog->portId = portId;
     pLog->hasNotification = MA_TRUE;
 }
 
-void ca_log_uninit(ca_log *pLog)
+CA_API void ca_log_uninit(ca_log *pLog)
 {
     ma_mutex_lock(&pLog->lock);
     pLog->portId = 0;

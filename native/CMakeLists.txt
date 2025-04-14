@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.0)
 project(coast_audio)
 
-set(HEADER_FILES "src/coast_audio.h" "src/ca_dart.h" "src/ca_context.h" "src/ca_device.h" "src/ca_log.h" "src/dart_types.h" "miniaudio/extras/miniaudio_split/miniaudio.h")
+set(HEADER_FILES "src/export.h" "src/coast_audio.h" "src/ca_dart.h" "src/ca_context.h" "src/ca_device.h" "src/ca_log.h" "src/dart_types.h" "miniaudio/extras/miniaudio_split/miniaudio.h")
 set(SOURCE_FILES "src/coast_audio.c" "src/ca_dart.c" "src/ca_context.c" "src/ca_device.c" "src/ca_log.c" "miniaudio/extras/miniaudio_split/miniaudio.c")
 
 if ("${OS}" STREQUAL "APPLE")
@@ -16,6 +16,16 @@ endif()
 
 target_include_directories(${PROJECT_NAME} PRIVATE "miniaudio/extras/miniaudio_split")
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+
+# 添加编译定义
+if(CA_DLL)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE 
+    CA_DLL
+    MA_DLL
+    MA_IMPLEMENTATION
+    MINIAUDIO_IMPLEMENTATION
+  )
+endif()
 
 if ("${OS}" STREQUAL "APPLE")
   find_library(CORE_FOUNDATION CoreFoundation)
