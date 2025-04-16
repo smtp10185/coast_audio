@@ -6,6 +6,7 @@ import 'package:example/main_page.dart';
 import 'package:example/models/audio_state.dart';
 import 'package:example/pages/backend_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 Future<void> main() async {
   AudioResourceManager.isDisposeLogEnabled = true;
@@ -18,7 +19,7 @@ Future<void> main() async {
     await session.setActive(true);
   }
 
-  runApp(const App());
+  runApp(const ProviderScope(child: App()));
 }
 
 class App extends StatefulWidget {

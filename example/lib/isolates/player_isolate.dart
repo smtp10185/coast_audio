@@ -50,7 +50,12 @@ class PlayerStateResponse extends Equatable {
   final AudioFormat outputFormat;
 
   @override
-  List<Object?> get props => [isPlaying, outputFormat.sampleRate, outputFormat.channels, outputFormat.sampleFormat];
+  List<Object?> get props => [
+        isPlaying,
+        outputFormat.sampleRate,
+        outputFormat.channels,
+        outputFormat.sampleFormat
+      ];
 }
 
 class PlayerPositionResponse extends Equatable {
@@ -134,7 +139,8 @@ class PlayerIsolate {
   }
 
   // The worker function used to initialize the audio player in the isolate
-  static Future<void> _worker(dynamic initialMessage, AudioIsolateWorkerMessenger messenger) async {
+  static Future<void> _worker(
+      dynamic initialMessage, AudioIsolateWorkerMessenger messenger) async {
     AudioResourceManager.isDisposeLogEnabled = true;
 
     final message = initialMessage as _PlayerMessage;
@@ -142,7 +148,8 @@ class PlayerIsolate {
     // Initialize the audio player with the specified file or buffer
     final AudioInputDataSource dataSource;
     if (message.path != null) {
-      dataSource = AudioFileDataSource(file: File(message.path!), mode: FileMode.read);
+      dataSource =
+          AudioFileDataSource(file: File(message.path!), mode: FileMode.read);
     } else {
       dataSource = AudioMemoryDataSource(buffer: message.content!);
     }
@@ -193,9 +200,6 @@ class AudioPlayer {
           ),
         ) {
     _decoderNode.outputBus.connect(_playbackNode.inputBus);
-    _playbackNode.device.notification.listen((notification) {
-      print('[AudioPlayer#${_playbackNode.device.resourceId}] Notification(type: ${notification.type.name}, state: ${notification.state.name})');
-    });
   }
 
   factory AudioPlayer.findDecoder({
@@ -209,7 +213,8 @@ class AudioPlayer {
       decoder = WavAudioDecoder(dataSource: dataSource);
     } on Exception catch (_) {
       try {
-        decoder = MaAudioDecoder(dataSource: dataSource, expectedSampleFormat: SampleFormat.int32);
+        decoder = MaAudioDecoder(
+            dataSource: dataSource, expectedSampleFormat: SampleFormat.int32);
       } on Exception catch (e) {
         throw Exception('Could not find the decoder.\nInner exception: $e');
       }
@@ -242,7 +247,8 @@ class AudioPlayer {
   /// Get the current playback time
   AudioTime get position {
     return AudioTime.fromFrames(
-      _decoderNode.decoder.cursorInFrames - _playbackNode.device.availableReadFrames,
+      _decoderNode.decoder.cursorInFrames -
+          _playbackNode.device.availableReadFrames,
       format: _decoderNode.decoder.outputFormat,
     );
   }
@@ -250,7 +256,8 @@ class AudioPlayer {
   /// Set the current playback time
   set position(AudioTime value) {
     // Set the cursor in the decoder to the specified position
-    _decoderNode.decoder.cursorInFrames = value.computeFrames(_decoderNode.decoder.outputFormat);
+    _decoderNode.decoder.cursorInFrames =
+        value.computeFrames(_decoderNode.decoder.outputFormat);
 
     // Clear the playback device's buffer to prevent old audio data from being played
     _playbackNode.device.clearBuffer();
@@ -267,7 +274,8 @@ class AudioPlayer {
   PlayerPositionResponse getPosition() {
     return PlayerPositionResponse(
       position: position,
-      duration: AudioTime.fromFrames(_decoderNode.decoder.lengthInFrames!, format: _decoderNode.decoder.outputFormat),
+      duration: AudioTime.fromFrames(_decoderNode.decoder.lengthInFrames!,
+          format: _decoderNode.decoder.outputFormat),
     );
   }
 

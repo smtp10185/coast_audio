@@ -3,7 +3,7 @@ import 'package:example/components/action_tile.dart';
 import 'package:example/components/select_device_dialog.dart';
 import 'package:example/main.dart';
 import 'package:example/models/audio_state.dart';
-import 'package:example/pages/daw_page.dart';
+import 'package:example/pages/mobile_daw_page.dart';
 import 'package:example/pages/loopback_page.dart';
 import 'package:example/pages/player_page.dart';
 import 'package:example/pages/recorder_page.dart';
@@ -59,6 +59,15 @@ class _MainPageState extends State<MainPage> {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => RecorderPage(audio: widget.audio),
+                  ),
+                ),
+              ),
+              ActionTile(
+                title: '移动 DAW',
+                body: '移动端数字音频工作站界面',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const MobileDawPage(),
                   ),
                 ),
               ),
