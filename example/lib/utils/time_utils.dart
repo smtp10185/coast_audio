@@ -29,6 +29,11 @@ class TimeUtils {
   /// [seconds] - 秒数
   /// 返回包含小节、拍和细分的Map
   Map<String, dynamic> secondsToBarInfo(double seconds) {
+    // 处理负数秒
+    if (seconds < 0) {
+      seconds = 0;
+    }
+
     // 计算一拍的时长(秒)
     final double secondsPerBeat = 60.0 / bpm;
 
@@ -54,7 +59,34 @@ class TimeUtils {
       'bar': bar,
       'beat': beat,
       'ticks': ticks,
+      'secondsPerBar': secondsPerBar, // 添加每小节秒数，方便计算
+      'secondsPerBeat': secondsPerBeat, // 添加每拍秒数，方便计算
     };
+  }
+
+  /// 格式化小节显示文本，根据小节数自动选择合适的显示格式
+  /// [bar] - 小节数
+  /// 返回格式化的文本
+  String formatBarDisplay(int bar) {
+    if (bar > 999) {
+      // 超过999小节时，显示为"1k"、"1.2k"的格式
+      return '${(bar / 1000).toStringAsFixed(1)}k';
+    } else if (bar > 99) {
+      // 超过99小节时，简单显示数字
+      return '$bar';
+    } else {
+      // 99小节以内，显示为"小节X"的格式
+      return '$bar';
+    }
+  }
+
+  /// 计算指定秒数包含多少个完整小节
+  /// [seconds] - 秒数
+  /// 返回完整小节数
+  int calculateBars(double seconds) {
+    final double secondsPerBeat = 60.0 / bpm;
+    final double secondsPerBar = secondsPerBeat * beatsPerBar;
+    return (seconds / secondsPerBar).floor();
   }
 
   /// 小节信息转换为秒数

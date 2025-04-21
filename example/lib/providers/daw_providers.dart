@@ -4,11 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/clip.dart';
 import '../models/track.dart';
 import '../utils/time_utils.dart';
+import 'dart:math' as Math;
 
 // 时间线配置常量提供者
 final dawConfigProvider = Provider<DawConfig>((ref) {
   return const DawConfig(
-    totalSeconds: 60.0,
+    totalSeconds: 240.0,
     pixelsPerSecond: 50.0,
     minSecondsPerRow: 5.0,
     trackHeight: 50.0,
@@ -195,13 +196,23 @@ final tracksProvider =
 class PlaybackState {
   final bool isPlaying;
   final double position;
+  final bool disableAutoScroll;
 
-  PlaybackState({required this.isPlaying, required this.position});
+  PlaybackState({
+    required this.isPlaying,
+    required this.position,
+    this.disableAutoScroll = false,
+  });
 
-  PlaybackState copyWith({bool? isPlaying, double? position}) {
+  PlaybackState copyWith({
+    bool? isPlaying,
+    double? position,
+    bool? disableAutoScroll,
+  }) {
     return PlaybackState(
       isPlaying: isPlaying ?? this.isPlaying,
       position: position ?? this.position,
+      disableAutoScroll: disableAutoScroll ?? this.disableAutoScroll,
     );
   }
 }
@@ -212,7 +223,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   final Function onPositionChanged;
 
   PlaybackNotifier(this.totalSeconds, this.onPositionChanged)
-      : super(PlaybackState(isPlaying: false, position: 0.0));
+      : super(PlaybackState(
+            isPlaying: false, position: 0.0, disableAutoScroll: false));
 
   @override
   void dispose() {
@@ -232,7 +244,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
   void stop() {
     _stopTimer();
-    state = PlaybackState(isPlaying: false, position: 0.0);
+    state = PlaybackState(
+        isPlaying: false, position: 0.0, disableAutoScroll: false);
   }
 
   void seekTo(double position) {
@@ -253,6 +266,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   void _stopTimer() {
     _playTimer?.cancel();
     _playTimer = null;
+  }
+
+  // 切换自动滚动状态
+  void toggleAutoScroll() {
+    state = state.copyWith(disableAutoScroll: !state.disableAutoScroll);
+  }
+
+  // 设置自动滚动状态
+  void setAutoScroll(bool enable) {
+    state = state.copyWith(disableAutoScroll: !enable);
   }
 }
 
@@ -338,6 +361,11 @@ class ScrollControllerNotifier extends StateNotifier<ScrollController> {
     final tracks = _ref.read(tracksProvider);
     final draggingState = _ref.read(draggingStateProvider);
 
+    // 如果不应该自动滚动，直接返回
+    if (playbackState.disableAutoScroll) {
+      return;
+    }
+
     // 计算行高
     double rowHeight = _calculateRowHeight(
       config,
@@ -361,13 +389,20 @@ class ScrollControllerNotifier extends StateNotifier<ScrollController> {
         (playbackState.position / secondsPerRowScaled).floor();
     final double scrollTarget = currentRow * rowHeight;
 
-    // 平滑滚动到目标位置
+    // 检查播放指针是否已经在视图外
     if (state.hasClients) {
-      state.animateTo(
-        scrollTarget,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      final double scrollTop = state.offset;
+      final double viewportHeight = state.position.viewportDimension;
+      final double scrollBottom = scrollTop + viewportHeight;
+
+      // 只有当播放指针不在当前视图中时才滚动
+      if (scrollTarget < scrollTop || scrollTarget > scrollBottom - rowHeight) {
+        state.animateTo(
+          scrollTarget,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
     }
   }
 
@@ -519,12 +554,7 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
     final double pixelsPerSecond = viewportWidth / secondsPerRowScaled;
     final double timeDelta = delta.dx / pixelsPerSecond;
 
-    // 计算垂直方向的行偏移
-    final double rowHeight = _calculateRowHeight();
-    final double rowDelta = delta.dy / rowHeight;
-    final int rowOffset = rowDelta.round();
-
-    // 获取当前Clip的实际引用 - 重要修复
+    // 获取当前Clip的实际引用
     Clip? currentClip;
     int? trackIndex;
 
@@ -547,17 +577,87 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
       return;
     }
 
-    // 计算新的开始时间 - 简化计算
-    double newStartTime = state.dragStartTime! + timeDelta;
+    // 计算垂直方向的行偏移
+    final double rowHeight = _calculateRowHeight();
+    final double rowDelta = delta.dy / rowHeight;
+    int rowOffset = rowDelta.round();
 
-    // 考虑行偏移
-    if (rowOffset != 0) {
-      newStartTime += rowOffset * secondsPerRowScaled;
+    // 计算当前片段所在的行
+    final int currentRow = (state.dragStartTime! / secondsPerRowScaled).floor();
+
+    // 计算行数上限
+    final int totalRows = (config.totalSeconds / secondsPerRowScaled).ceil();
+    final int lastRow = totalRows - 1;
+
+    // 检查行偏移是否会超出边界
+    if (currentRow + rowOffset < 0) {
+      // 不允许向上超过第一行
+      rowOffset = -currentRow;
+    } else if (currentRow + rowOffset > lastRow) {
+      // 不允许向下超过最后一行
+      rowOffset = lastRow - currentRow;
     }
 
-    // 限制在合法范围内
-    newStartTime =
-        newStartTime.clamp(0, config.totalSeconds - currentClip.duration);
+    // 计算新的开始时间（先不考虑行偏移）
+    double newStartTime = state.dragStartTime! + timeDelta;
+
+    // 计算绝对安全的时间范围
+    final double maxAllowedStartTime =
+        config.totalSeconds - currentClip.duration;
+
+    // 如果在考虑行偏移之前，时间已经接近最大值，特殊处理
+    if (newStartTime > maxAllowedStartTime * 0.95) {
+      // 如果接近最大值，并且尝试向下拖动到最后一行以外，则强制锁定在最后一行
+      if (rowOffset > 0 && currentRow + rowOffset >= lastRow) {
+        // 计算最后一行的最佳位置
+        final double lastRowStartTime = lastRow * secondsPerRowScaled;
+        final double maxOffsetInLastRow =
+            maxAllowedStartTime - lastRowStartTime;
+
+        // 将位置固定到最后一行的合适位置，防止溢出
+        if (maxOffsetInLastRow > 0) {
+          // 有空间可以放置clip
+          newStartTime = lastRowStartTime +
+              Math.min(
+                  maxOffsetInLastRow * 0.9, // 留10%的安全空间
+                  secondsPerRowScaled * 0.5); // 或者放在行的中间位置
+        } else {
+          // 最后一行空间不足，尽可能靠近末尾但不超出
+          newStartTime = Math.max(0, maxAllowedStartTime - 0.1);
+        }
+
+        // 禁止任何垂直偏移计算
+        rowOffset = 0;
+      }
+    }
+
+    // 如果是尝试跨行，检查是否仍在安全范围内
+    if (rowOffset != 0) {
+      double potentialNewTime =
+          newStartTime + (rowOffset * secondsPerRowScaled);
+
+      // 如果新时间超出范围，禁止跨行操作
+      if (potentialNewTime < 0 || potentialNewTime > maxAllowedStartTime) {
+        // 如果跨行会导致越界，取消行偏移
+        rowOffset = 0;
+      } else {
+        // 应用行偏移
+        newStartTime = potentialNewTime;
+      }
+    }
+
+    // 最终安全检查，确保时间绝对在合法范围内
+    newStartTime = Math.max(0, Math.min(maxAllowedStartTime, newStartTime));
+
+    // 额外的防跳变检查
+    final int newRow = (newStartTime / secondsPerRowScaled).floor();
+    if (currentRow == lastRow && newRow < lastRow - 1) {
+      // 如果从最后一行跳变到比上一行更前面的行，限制到上一行
+      newStartTime = (lastRow - 1) * secondsPerRowScaled + 0.1;
+    } else if (newRow > lastRow) {
+      // 如果计算出的行超过最后一行，强制限制在最后一行
+      newStartTime = lastRow * secondsPerRowScaled + 0.1;
+    }
 
     // 使用找到的真实片段引用更新位置
     tracksNotifier.updateClipPosition(currentClip, newStartTime);

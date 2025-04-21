@@ -18,6 +18,7 @@ class MobileDawPage extends ConsumerWidget {
     final tracks = ref.watch(tracksProvider);
     final playbackState = ref.watch(playbackProvider);
     final zoomState = ref.watch(zoomProvider);
+    final zoomNotifier = ref.read(zoomProvider.notifier);
     final uiControl = ref.watch(uiControlProvider);
     final draggingState = ref.watch(draggingStateProvider);
     final scrollController = ref.watch(scrollControllerProvider);
@@ -36,41 +37,108 @@ class MobileDawPage extends ConsumerWidget {
         appBar: AppBar(
           title: const Text('移动 DAW'),
           actions: [
-            // 轨道可见性控制
-            IconButton(
-              icon: Icon(uiControl.isTrackPanelExpanded
-                  ? Icons.layers
-                  : Icons.layers_outlined),
-              onPressed: () =>
-                  ref.read(uiControlProvider.notifier).toggleTrackPanel(),
-              tooltip: '轨道显示控制',
+            // 缩放控制 - 直接放在顶部操作栏
+            Container(
+              margin: const EdgeInsets.only(right: 8.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 缩小按钮
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(3.0),
+                      ),
+                    ),
+                    child: InkWell(
+                      onTap: () => zoomNotifier.zoomOut(),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 6.0, vertical: 2.0),
+                        child: Icon(Icons.remove, size: 14),
+                      ),
+                    ),
+                  ),
+                  // 显示缩放值
+                  Container(
+                    color: Colors.grey[100],
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 4.0, vertical: 2.0),
+                    child: Text(
+                      '${zoomState.scale.toStringAsFixed(1)}x',
+                      style: const TextStyle(fontSize: 10),
+                    ),
+                  ),
+                  // 放大按钮
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: const BorderRadius.horizontal(
+                        right: Radius.circular(3.0),
+                      ),
+                    ),
+                    child: InkWell(
+                      onTap: () => zoomNotifier.zoomIn(),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 6.0, vertical: 2.0),
+                        child: Icon(Icons.add, size: 14),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
+
             // 播放控制按钮
             IconButton(
               icon: Icon(
                   playbackState.isPlaying ? Icons.pause : Icons.play_arrow),
-              onPressed: () => ref.read(playbackProvider.notifier).togglePlay(),
+              onPressed: () => _togglePlay(ref),
             ),
             IconButton(
               icon: const Icon(Icons.stop),
               onPressed: () => ref.read(playbackProvider.notifier).stop(),
             ),
+            // 添加侧边栏折叠/展开按钮
+            IconButton(
+              icon: Icon(
+                uiControl.isTrackPanelExpanded
+                    ? Icons.chevron_left
+                    : Icons.chevron_right,
+              ),
+              onPressed: () =>
+                  ref.read(uiControlProvider.notifier).toggleTrackPanel(),
+              tooltip: uiControl.isTrackPanelExpanded ? '收起轨道面板' : '展开轨道面板',
+            ),
           ],
         ),
         body: Column(
           children: [
-            // 轨道控制面板
-            _buildTrackControlPanel(ref),
-
-            // 缩放控制
-            _buildZoomControls(ref),
-
             // 播放控制
             _buildTransportControls(ref),
 
-            // 主要内容区域
+            // 主要内容区域 - 使用Row布局分为侧边栏和时间线内容
             Expanded(
-              child: _buildTimelineContent(ref),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 左侧轨道信息边栏 - 根据展开状态控制显示
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: uiControl.isTrackPanelExpanded ? 100.0 : 0, // 折叠/展开
+                    child: uiControl.isTrackPanelExpanded
+                        ? _buildTrackSidebar(ref)
+                        : const SizedBox(),
+                  ),
+
+                  // 右侧时间线和轨道内容
+                  Expanded(
+                    child: _buildTimelineContent(ref),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -107,260 +175,196 @@ class MobileDawPage extends ConsumerWidget {
     );
   }
 
-  // 轨道控制面板组件
-  Widget _buildTrackControlPanel(WidgetRef ref) {
-    final tracksNotifier = ref.read(tracksProvider.notifier);
-    final tracks = ref.watch(tracksProvider);
-    final uiControl = ref.watch(uiControlProvider);
-    final uiControlNotifier = ref.read(uiControlProvider.notifier);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 控制按钮
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-          child: Row(
-            children: [
-              Text(
-                '轨道控制',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey[700],
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: Icon(
-                  uiControl.isTrackPanelExpanded
-                      ? Icons.expand_less
-                      : Icons.expand_more,
-                  color: Colors.grey[700],
-                ),
-                onPressed: () => uiControlNotifier.toggleTrackPanel(),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                tooltip: uiControl.isTrackPanelExpanded ? '收起面板' : '展开面板',
-              ),
-            ],
-          ),
-        ),
-
-        // 轨道列表面板
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          height: uiControl.isTrackPanelExpanded ? tracks.length * 40.0 : 0,
-          color: Colors.grey[100],
-          child: ListView.builder(
-            itemCount: tracks.length,
-            physics: const NeverScrollableScrollPhysics(),
-            itemBuilder: (context, index) {
-              final track = tracks[index];
-              // 为不同轨道分配不同颜色
-              final Color trackColor = tracksNotifier.getTrackColor(index);
-
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                title: Text(track.name, style: const TextStyle(fontSize: 14)),
-                leading: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 可见性按钮
-                    IconButton(
-                      icon: Icon(
-                        track.isVisible
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                        color: track.isVisible ? Colors.blue : Colors.grey,
-                        size: 20,
-                      ),
-                      onPressed: () =>
-                          tracksNotifier.toggleTrackVisibility(index),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      tooltip: track.isVisible ? '隐藏轨道' : '显示轨道',
-                    ),
-                    const SizedBox(width: 12),
-                    // 静音按钮
-                    IconButton(
-                      icon: Icon(
-                        track.isMuted ? Icons.volume_off : Icons.volume_up,
-                        color: track.isMuted ? Colors.red : Colors.grey[700],
-                        size: 20,
-                      ),
-                      onPressed: () => tracksNotifier.toggleTrackMute(index),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      tooltip: track.isMuted ? '取消静音' : '静音',
-                    ),
-                  ],
-                ),
-                trailing: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: trackColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                onTap: () => tracksNotifier.toggleTrackVisibility(index),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // 缩放控制组件
-  Widget _buildZoomControls(WidgetRef ref) {
-    final zoomState = ref.watch(zoomProvider);
-    final zoomNotifier = ref.read(zoomProvider.notifier);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Row(
-        children: [
-          // 缩小按钮
-          IconButton(
-            icon: const Icon(Icons.zoom_out),
-            onPressed: () => zoomNotifier.zoomOut(),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            iconSize: 20,
-            splashRadius: 20,
-            tooltip: '缩小',
-          ),
-
-          const SizedBox(width: 4),
-
-          // 缩放滑块
-          Expanded(
-            child: SliderTheme(
-              data: SliderThemeData(
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                trackHeight: 3,
-                activeTrackColor: Theme.of(ref.context).primaryColor,
-                inactiveTrackColor: Colors.grey[300],
-                thumbColor: Theme.of(ref.context).primaryColor,
-              ),
-              child: Slider(
-                value: zoomState.scale,
-                min: 0.5,
-                max: 2.0,
-                onChanged: (value) => zoomNotifier.setScale(value),
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 4),
-
-          // 放大按钮
-          IconButton(
-            icon: const Icon(Icons.zoom_in),
-            onPressed: () => zoomNotifier.zoomIn(),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            iconSize: 20,
-            splashRadius: 20,
-            tooltip: '放大',
-          ),
-
-          // 显示当前缩放值
-          const SizedBox(width: 8),
-          Text(
-            '${zoomState.scale.toStringAsFixed(1)}x',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // 播放控制组件
   Widget _buildTransportControls(WidgetRef ref) {
     final config = ref.watch(dawConfigProvider);
     final playbackState = ref.watch(playbackProvider);
     final playbackNotifier = ref.read(playbackProvider.notifier);
+    final timeUtils = ref.watch(timeUtilsProvider);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 按钮控制栏
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // 回到开头按钮
-            IconButton(
-              icon: const Icon(Icons.skip_previous),
-              onPressed: () => playbackNotifier.seekTo(0.0),
-              tooltip: '回到开头',
+    // 将秒数转换为小节信息
+    final barInfo = timeUtils.secondsToBarInfo(playbackState.position);
+
+    // 创建时间码显示
+    final String barTimeDisplay =
+        "${barInfo['bar']}.${barInfo['beat']}.${barInfo['ticks'].toString().padLeft(2, '0')}";
+    final String secondsDisplay = _formatTime(playbackState.position);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        border: Border(
+          bottom: BorderSide(color: Colors.grey[300]!),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 回到开头按钮
+          IconButton(
+            icon: const Icon(Icons.skip_previous),
+            onPressed: () => playbackNotifier.seekTo(0.0),
+            tooltip: '回到开头',
+            iconSize: 20,
+          ),
+
+          // 播放/暂停按钮
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8.0),
+            decoration: BoxDecoration(
+              color: Theme.of(ref.context).primaryColor.withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-
-            // 播放/暂停按钮
-            IconButton(
+            child: IconButton(
               icon: Icon(
-                  playbackState.isPlaying ? Icons.pause : Icons.play_arrow),
-              onPressed: () => playbackNotifier.togglePlay(),
-              iconSize: 32,
+                  playbackState.isPlaying ? Icons.pause : Icons.play_arrow,
+                  color: Theme.of(ref.context).primaryColor),
+              onPressed: () => _togglePlay(ref),
+              iconSize: 28,
               tooltip: playbackState.isPlaying ? '暂停' : '播放',
             ),
+          ),
 
-            // 停止按钮
-            IconButton(
-              icon: const Icon(Icons.stop),
-              onPressed: () => playbackNotifier.stop(),
-              tooltip: '停止',
-            ),
+          // 停止按钮
+          IconButton(
+            icon: const Icon(Icons.stop),
+            onPressed: () => playbackNotifier.stop(),
+            tooltip: '停止',
+            iconSize: 20,
+          ),
 
-            // 当前播放时间显示
-            const SizedBox(width: 8),
-            Text(
-              _formatTime(playbackState.position),
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[800],
+          const SizedBox(width: 12),
+
+          // 浅色主题的DAW时间显示面板
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 小节显示
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(4.0),
+                  border: Border.all(color: Colors.grey[300]!, width: 1),
+                ),
+                child: Row(
+                  children: [
+                    // 小节图标
+                    Icon(
+                      Icons.music_note,
+                      color: Colors.green[600],
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    // 小节文本
+                    Text(
+                      barTimeDisplay,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
+                        color: Colors.grey[800],
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            const Text(' / '),
+              const SizedBox(width: 8),
 
-            // 总时长显示
-            Text(
-              _formatTime(config.totalSeconds),
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
+              // 时间显示
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(4.0),
+                  border: Border.all(color: Colors.grey[300]!, width: 1),
+                ),
+                child: Row(
+                  children: [
+                    // 时钟图标
+                    Icon(
+                      Icons.timer,
+                      color: Colors.blue[600],
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    // 时间文本
+                    Text(
+                      secondsDisplay,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
+                        color: Colors.grey[800],
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
 
-        // 播放进度条
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: SliderTheme(
-            data: SliderThemeData(
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              trackHeight: 4,
-              activeTrackColor: Theme.of(ref.context).primaryColor,
-              inactiveTrackColor: Colors.grey[300],
-              thumbColor: Theme.of(ref.context).primaryColor,
+          const Spacer(),
+
+          // BPM显示
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            margin: const EdgeInsets.only(right: 8.0),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(4.0),
+              border: Border.all(color: Colors.grey[300]!, width: 1),
             ),
-            child: Slider(
-              value: playbackState.position.clamp(0, config.totalSeconds),
-              min: 0,
-              max: config.totalSeconds,
-              onChanged: (value) => playbackNotifier.seekTo(value),
+            child: Row(
+              children: [
+                Text(
+                  "BPM",
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.orange[700],
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  "${timeUtils.bpm.toStringAsFixed(1)}",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'monospace',
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-      ],
+
+          // 添加自动滚动切换按钮
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: IconButton(
+              icon: Icon(
+                playbackState.disableAutoScroll
+                    ? Icons.lock_outline
+                    : Icons.lock_open_outlined,
+                color: playbackState.disableAutoScroll
+                    ? Colors.red.shade400
+                    : Colors.green.shade700,
+                size: 20,
+              ),
+              tooltip: playbackState.disableAutoScroll ? '启用自动滚动' : '禁用自动滚动',
+              onPressed: () =>
+                  ref.read(playbackProvider.notifier).toggleAutoScroll(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -371,175 +375,637 @@ class MobileDawPage extends ConsumerWidget {
     return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
-  // 主要时间线内容
-  Widget _buildTimelineContent(WidgetRef ref) {
-    final config = ref.watch(dawConfigProvider);
-    final timeUtils = ref.watch(timeUtilsProvider);
-    final scrollController = ref.watch(scrollControllerProvider);
-    final playbackState = ref.watch(playbackProvider);
-    final zoomState = ref.watch(zoomProvider);
-    final draggingState = ref.watch(draggingStateProvider);
-    final viewportWidth = ref.watch(viewportWidthProvider);
+  // 新增：构建轨道侧边栏 - 优化版本
+  Widget _buildTrackSidebar(WidgetRef ref) {
     final tracks = ref.watch(tracksProvider);
+    final tracksNotifier = ref.read(tracksProvider.notifier);
+    final config = ref.watch(dawConfigProvider);
+    final draggingState = ref.watch(draggingStateProvider);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // 安全地更新视口宽度
-        ref
-            .read(viewportWidthProvider.notifier)
-            .updateWidth(constraints.maxWidth);
-
-        // 计算实际使用的像素每秒
-        final double scaledPixelsPerSecond =
-            config.pixelsPerSecond * zoomState.scale;
-
-        // 根据可用宽度计算每行可显示的秒数
-        final double adaptiveSecondsPerRow =
-            (viewportWidth / scaledPixelsPerSecond).floor().toDouble();
-        // 确保至少显示最小秒数
-        final double secondsPerRowScaled =
-            adaptiveSecondsPerRow > config.minSecondsPerRow
-                ? adaptiveSecondsPerRow
-                : config.minSecondsPerRow;
-
-        // 计算有多少行
-        final int rowCount = (config.totalSeconds / secondsPerRowScaled).ceil();
-
-        // 在每次构建时打印状态信息，以便调试
-        // print(
-        //     'TimelineContent: viewportWidth=$viewportWidth, secondsPerRow=$secondsPerRowScaled, rowCount=$rowCount');
-        // print(
-        //     'TimelineContent: 缩放比例=${zoomState.scale}, 每秒像素数=$scaledPixelsPerSecond');
-        // print(
-        //     'TimelineContent: 拖动状态=${draggingState.isDragging}, 片段=${draggingState.draggingClip?.name}');
-
-        // 打印所有轨道和片段信息
-        // for (int i = 0; i < tracks.length; i++) {
-        //   final track = tracks[i];
-        //   print('Track ${track.name} - ${track.clips.length} clips:');
-        //   for (var clip in track.clips) {
-        //     print(
-        //         ' - Clip ${clip.name}: startTime=${clip.startTime}, duration=${clip.duration}');
-        //   }
-        // }
-
-        return Stack(
-          children: [
-            // 时间轴和轨道内容
-            SingleChildScrollView(
-              controller: scrollController,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  // 确保内容高度不会溢出
-                  minHeight: constraints.maxHeight,
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(right: BorderSide(color: Colors.grey[300]!)),
+        color: Colors.grey[100],
+      ),
+      child: Column(
+        children: [
+          // 侧边栏标题
+          Container(
+            height: config.timelineHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+              color: Colors.grey[200],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '轨道',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[700],
+                  ),
                 ),
-                child: ListView.builder(
-                  physics: const NeverScrollableScrollPhysics(),
-                  shrinkWrap: true,
-                  itemCount: rowCount,
-                  itemBuilder: (context, rowIndex) {
-                    final double rowStartTime = rowIndex * secondsPerRowScaled;
-                    final double rowEndTime =
-                        (rowIndex + 1) * secondsPerRowScaled;
+                // 添加新轨道按钮
+                InkWell(
+                  onTap: () {
+                    // 这里可以添加创建新轨道的功能
+                  },
+                  child: Icon(
+                    Icons.add_circle_outline,
+                    size: 16,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 时间轴标尺
-                        Stack(
+          // 轨道列表
+          Expanded(
+            child: ListView.builder(
+              itemCount: tracks.length,
+              itemExtent: config.trackHeight,
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemBuilder: (context, trackIndex) {
+                final track = tracks[trackIndex];
+                final Color trackColor =
+                    tracksNotifier.getTrackColor(trackIndex);
+
+                // 如果轨道设置为不可见且正在拖动，则不显示
+                if (draggingState.isDragging &&
+                    draggingState.activeTrackIndex != null &&
+                    trackIndex != draggingState.activeTrackIndex) {
+                  return SizedBox(height: 0);
+                }
+
+                // 如果轨道不可见，显示半透明样式
+                final bool isVisible = track.isVisible;
+
+                return Container(
+                  height: config.trackHeight,
+                  decoration: BoxDecoration(
+                    border:
+                        Border(bottom: BorderSide(color: Colors.grey[300]!)),
+                    color: trackIndex % 2 == 0 ? Colors.grey[50] : Colors.white,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () =>
+                          tracksNotifier.toggleTrackVisibility(trackIndex),
+                      onLongPress: () {
+                        // 可以在这里添加显示轨道更多选项的功能
+                        // 例如重命名、删除等
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: Row(
                           children: [
-                            _buildTimelineRuler(
-                              ref,
-                              rowStartTime: rowStartTime,
-                              rowEndTime: rowEndTime,
-                              rowIndex: rowIndex,
-                              rowCount: rowCount,
-                              viewportWidth: viewportWidth,
+                            // 轨道颜色指示器
+                            Container(
+                              width: 4,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: trackColor
+                                    .withOpacity(isVisible ? 1.0 : 0.4),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+
+                            // 轨道名称
+                            Expanded(
+                              child: Text(
+                                track.name,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[800]!
+                                      .withOpacity(isVisible ? 1.0 : 0.5),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
 
-                            // 为当前行添加一个高亮指示器，方便调试
-                            // 如果是当前拖动片段所在的行，显示高亮背景
-                            if (draggingState.isDragging &&
-                                draggingState.draggingClip != null &&
-                                rowIndex ==
-                                    (draggingState.draggingClip!.startTime /
-                                            secondsPerRowScaled)
-                                        .floor())
-                              Positioned.fill(
-                                child: Container(
-                                  color: Colors.yellow.withOpacity(0.1),
+                            // 可见性按钮
+                            SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                iconSize: 14,
+                                icon: Icon(
+                                  track.isVisible
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                  color: track.isVisible
+                                      ? Colors.blue.withOpacity(0.8)
+                                      : Colors.grey[400],
                                 ),
+                                onPressed: () => tracksNotifier
+                                    .toggleTrackVisibility(trackIndex),
                               ),
+                            ),
+
+                            // 静音按钮
+                            SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                iconSize: 14,
+                                icon: Icon(
+                                  track.isMuted
+                                      ? Icons.volume_off
+                                      : Icons.volume_up,
+                                  color: track.isMuted
+                                      ? Colors.red
+                                          .withOpacity(isVisible ? 1.0 : 0.5)
+                                      : Colors.grey[700]!
+                                          .withOpacity(isVisible ? 1.0 : 0.5),
+                                ),
+                                onPressed: () =>
+                                    tracksNotifier.toggleTrackMute(trackIndex),
+                              ),
+                            ),
                           ],
                         ),
-
-                        // 轨道内容
-                        _buildTracks(
-                          ref,
-                          rowStartTime: rowStartTime,
-                          rowEndTime: rowEndTime,
-                          viewportWidth: viewportWidth,
-                        ),
-
-                        // 行间距
-                        SizedBox(height: config.rowSpacing),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-
-            // 播放指针
-            if (playbackState.position > 0)
-              _buildPlayhead(
-                ref,
-                viewportWidth: viewportWidth,
-                secondsPerRowScaled: secondsPerRowScaled,
-              ),
-
-            // 拖动辅助线 - 跟随鼠标位置
-            if (draggingState.isDragging &&
-                draggingState.currentDragPosition != null)
-              Positioned(
-                left: draggingState.currentDragPosition!.dx -
-                    MediaQuery.of(context).padding.left,
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  width: 2,
-                  color: Colors.yellow.withOpacity(0.7),
-                ),
-              ),
-
-            // 显示拖动状态文本
-            if (draggingState.isDragging && draggingState.draggingClip != null)
-              Positioned(
-                top: 10,
-                left: 10,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    '拖动: ${draggingState.draggingClip!.name} - ${draggingState.draggingClip!.startTime.toStringAsFixed(2)}s',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
+                      ),
                     ),
                   ),
-                ),
-              ),
-          ],
-        );
-      },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // 构建时间轴标尺
+  // 构建轨道内容
+  Widget _buildTracks(
+    WidgetRef ref, {
+    required double rowStartTime,
+    required double rowEndTime,
+    required double viewportWidth,
+  }) {
+    final tracks = ref.watch(tracksProvider);
+    final draggingState = ref.watch(draggingStateProvider);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(tracks.length, (trackIndex) {
+        final track = tracks[trackIndex];
+
+        // 如果轨道设置为不可见，则不显示
+        if (!track.isVisible) {
+          return const SizedBox();
+        }
+
+        // 如果正在拖动且不是活跃轨道，则不显示
+        if (draggingState.isDragging &&
+            draggingState.activeTrackIndex != null &&
+            trackIndex != draggingState.activeTrackIndex) {
+          return const SizedBox(height: 0); // 返回高度为0的轨道占位
+        }
+
+        return _buildTrackItem(
+          ref,
+          track: track,
+          trackIndex: trackIndex,
+          rowStartTime: rowStartTime,
+          rowEndTime: rowEndTime,
+          viewportWidth: viewportWidth,
+        );
+      }),
+    );
+  }
+
+  // 构建单个轨道项
+  Widget _buildTrackItem(
+    WidgetRef ref, {
+    required Track track,
+    required int trackIndex,
+    required double rowStartTime,
+    required double rowEndTime,
+    required double viewportWidth,
+  }) {
+    final config = ref.watch(dawConfigProvider);
+    final tracksNotifier = ref.read(tracksProvider.notifier);
+    final Color trackColor = tracksNotifier.getTrackColor(trackIndex);
+
+    return SizedBox(
+      height: config.trackHeight,
+      width: viewportWidth,
+      child: Stack(
+        children: [
+          // 轨道背景
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey[300]!),
+                ),
+                color: trackIndex % 2 == 0 ? Colors.grey[50] : Colors.white,
+              ),
+              // 左侧边框颜色指示器
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    color: trackColor.withOpacity(0.7),
+                  ),
+                  const Expanded(child: SizedBox()),
+                ],
+              ),
+            ),
+          ),
+
+          // 绘制轨道上的所有片段
+          ...track.clips
+              .map((clip) => _buildClip(
+                    ref,
+                    clip: clip,
+                    trackIndex: trackIndex,
+                    rowStartTime: rowStartTime,
+                    rowEndTime: rowEndTime,
+                    viewportWidth: viewportWidth,
+                  ))
+              .toList(),
+        ],
+      ),
+    );
+  }
+
+  // 构建单个片段
+  Widget _buildClip(
+    WidgetRef ref, {
+    required Clip clip,
+    required int trackIndex,
+    required double rowStartTime,
+    required double rowEndTime,
+    required double viewportWidth,
+  }) {
+    final config = ref.watch(dawConfigProvider);
+    final draggingState = ref.watch(draggingStateProvider);
+    final draggingNotifier = ref.read(draggingStateProvider.notifier);
+    final zoomState = ref.watch(zoomProvider);
+
+    // 计算缩放后的每秒像素数
+    final double scaledPixelsPerSecond =
+        config.pixelsPerSecond * zoomState.scale;
+
+    // 计算每行可显示的秒数（自适应）
+    final double adaptiveSecondsPerRow =
+        (viewportWidth / scaledPixelsPerSecond).floor().toDouble();
+    final double secondsPerRowScaled =
+        adaptiveSecondsPerRow > config.minSecondsPerRow
+            ? adaptiveSecondsPerRow
+            : config.minSecondsPerRow;
+
+    // 检查片段是否在当前行的范围内
+    final clipStartTime = clip.startTime;
+    final clipEndTime = clip.startTime + clip.duration;
+
+    // 如果片段完全在当前行之外，就不显示
+    if (clipEndTime <= rowStartTime || clipStartTime >= rowEndTime) {
+      return const SizedBox();
+    }
+
+    // 计算片段在当前行中的开始和结束时间
+    final double startInRow =
+        (clipStartTime > rowStartTime) ? clipStartTime - rowStartTime : 0;
+    final double endInRow = (clipEndTime < rowEndTime)
+        ? clipEndTime - rowStartTime
+        : rowEndTime - rowStartTime;
+
+    // 计算片段在当前行中的宽度（根据视口宽度自适应）
+    final double clipWidthInRow =
+        (endInRow - startInRow) / (rowEndTime - rowStartTime) * viewportWidth;
+
+    // 计算片段在当前行中的位置（根据视口宽度自适应）
+    final double clipLeftInRow =
+        startInRow / (rowEndTime - rowStartTime) * viewportWidth;
+
+    // 判断是否为当前正在拖动的片段
+    final bool isCurrentlyDragging = draggingState.isDragging &&
+        draggingState.draggingClip != null &&
+        draggingState.draggingClip!.name == clip.name &&
+        draggingState.draggingClip!.type == clip.type &&
+        draggingState.draggingClip!.color == clip.color;
+
+    return Positioned(
+      key: ValueKey('clip_${clip.name}_${clip.startTime}'), // 添加key确保刷新
+      left: clipLeftInRow,
+      top: 4, // 调整位置，不再需要为轨道名称留空间
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque, // 确保即使在透明区域也能捕获事件
+        onPanStart: (details) {
+          // 添加轻微触觉反馈
+          HapticFeedback.lightImpact();
+          draggingNotifier.startDragging(
+              clip, trackIndex, details.globalPosition);
+        },
+        onPanUpdate: (details) {
+          if (isCurrentlyDragging) {
+            draggingNotifier.updateDragging(details.globalPosition);
+          }
+        },
+        onPanEnd: (details) {
+          if (isCurrentlyDragging) {
+            // 添加触觉反馈，表示拖动结束
+            HapticFeedback.mediumImpact();
+            draggingNotifier.endDragging();
+          }
+        },
+        // 保留原有的长按处理以兼容移动设备
+        onLongPressStart: (details) {
+          // 添加触觉反馈，表示长按开始
+          HapticFeedback.mediumImpact();
+          draggingNotifier.startDragging(
+              clip, trackIndex, details.globalPosition);
+        },
+        onLongPressMoveUpdate: (details) {
+          if (isCurrentlyDragging) {
+            draggingNotifier.updateDragging(details.globalPosition);
+          }
+        },
+        onLongPressEnd: (details) {
+          if (isCurrentlyDragging) {
+            draggingNotifier.endDragging();
+          }
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.grab,
+          child: Container(
+            width: clipWidthInRow,
+            height: config.trackHeight - 10, // 调整高度，更贴近轨道高度
+            decoration: BoxDecoration(
+              color: clip.color.withOpacity(0.7),
+              border: Border.all(
+                color: isCurrentlyDragging ? Colors.yellow : clip.color,
+                width: isCurrentlyDragging ? 2 : 1,
+              ),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(clipStartTime >= rowStartTime ? 4 : 0),
+                bottomLeft:
+                    Radius.circular(clipStartTime >= rowStartTime ? 4 : 0),
+                topRight: Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
+                bottomRight: Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
+              ),
+              // 拖动时添加阴影效果
+              boxShadow: isCurrentlyDragging
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 5,
+                        offset: const Offset(2, 2),
+                      )
+                    ]
+                  : null,
+            ),
+            // 简化内容显示
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+              child: Center(
+                child: clipWidthInRow > 40
+                    ? Text(
+                        '${clip.name} (${clip.startTime.toStringAsFixed(1)}s)',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : const SizedBox(), // 宽度不足时不显示文本
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 修改时间线内容构建方法
+  Widget _buildTimelineContent(WidgetRef ref) {
+    final config = ref.watch(dawConfigProvider);
+    final tracks = ref.watch(tracksProvider);
+    final playbackState = ref.watch(playbackProvider);
+    final zoomState = ref.watch(zoomProvider);
+    final viewportWidth = ref.watch(viewportWidthProvider);
+    final draggingState = ref.watch(draggingStateProvider);
+    final scrollController = ref.watch(scrollControllerProvider);
+
+    // 安全检查
+    if (viewportWidth <= 0) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // 计算缩放后的每秒像素数
+    final double scaledPixelsPerSecond =
+        config.pixelsPerSecond * zoomState.scale;
+
+    // 计算每行可显示的秒数（自适应）
+    final double adaptiveSecondsPerRow =
+        (viewportWidth / scaledPixelsPerSecond).floor().toDouble();
+    final double secondsPerRowScaled =
+        adaptiveSecondsPerRow > config.minSecondsPerRow
+            ? adaptiveSecondsPerRow
+            : config.minSecondsPerRow;
+
+    // 调试输出
+    debugPrint(
+        '视口宽度: $viewportWidth, 每行秒数: $secondsPerRowScaled, 缩放比例: ${zoomState.scale}, 每秒像素: $scaledPixelsPerSecond');
+    if (draggingState.isDragging) {
+      debugPrint(
+          '拖动状态: ${draggingState.isDragging}, 活跃轨道: ${draggingState.activeTrackIndex}');
+    }
+
+    // 遍历所有轨道，输出轨道和片段信息用于调试
+    for (int i = 0; i < tracks.length; i++) {
+      final track = tracks[i];
+      debugPrint(
+          '轨道 $i: ${track.name}, 可见: ${track.isVisible}, 片段数: ${track.clips.length}');
+      for (final clip in track.clips) {
+        debugPrint(
+            '  片段: ${clip.name}, 开始时间: ${clip.startTime}, 持续时间: ${clip.duration}');
+      }
+    }
+
+    // 计算总所需行数
+    final int totalDuration = tracks.fold(
+        0,
+        (max, track) => Math.max(
+            max.toInt(),
+            track.clips.fold(
+                0,
+                (maxTime, clip) => Math.max(maxTime.toInt(),
+                    (clip.startTime + clip.duration).toInt()))));
+
+    final int rowCount =
+        (totalDuration / secondsPerRowScaled).ceil() + 1; // 额外添加一行作为缓冲
+
+    // 计算行的高度
+    double rowHeight = _calculateVisibleRowHeight(
+      config,
+      tracks.where((track) => track.isVisible).length,
+      draggingState.isDragging,
+      draggingState.activeTrackIndex,
+    );
+
+    // 生成正在拖动的片段位置指示器
+    Widget _buildDraggingPositionIndicator() {
+      if (!draggingState.isDragging || draggingState.draggingClip == null) {
+        return const SizedBox();
+      }
+
+      return Positioned(
+        top: 4,
+        left: 8,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            '${draggingState.draggingClip!.name}: ${draggingState.draggingClip!.startTime.toStringAsFixed(2)}s',
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
+        ),
+      );
+    }
+
+    // 构建时间线滚动视图内容
+    return Stack(
+      children: [
+        // 滚动视图
+        NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            final playbackNotifier = ref.read(playbackProvider.notifier);
+
+            // 检测用户手动滚动
+            if (notification is ScrollUpdateNotification) {
+              // 如果是用户拖动（而非程序触发的动画滚动）
+              if (notification.dragDetails != null) {
+                // 检测到用户手动滚动，禁用自动滚动
+                if (!playbackState.disableAutoScroll) {
+                  // 将自动滚动状态设置为禁用
+                  playbackNotifier.setAutoScroll(false);
+                  // 显示提示
+                  ScaffoldMessenger.of(ref.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('已禁用自动滚动，播放指针不会再自动滚动'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              }
+            }
+            return false;
+          },
+          child: SingleChildScrollView(
+            controller: scrollController,
+            child: SizedBox(
+              height: rowHeight * rowCount,
+              child: Stack(
+                children: [
+                  // 生成所有行
+                  Column(
+                    children: List.generate(rowCount, (rowIndex) {
+                      // 计算当前行的时间范围
+                      final double rowStartTime =
+                          rowIndex * secondsPerRowScaled;
+                      final double rowEndTime =
+                          rowStartTime + secondsPerRowScaled;
+
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 时间轴标尺
+                          Stack(
+                            children: [
+                              _buildTimelineRuler(
+                                ref,
+                                rowStartTime: rowStartTime,
+                                rowEndTime: rowEndTime,
+                                rowIndex: rowIndex,
+                                rowCount: rowCount,
+                                viewportWidth: viewportWidth,
+                              ),
+
+                              // 为当前行添加一个高亮指示器，方便调试
+                              // 如果是当前拖动片段所在的行，显示高亮背景
+                              if (draggingState.isDragging &&
+                                  draggingState.draggingClip != null &&
+                                  rowIndex ==
+                                      (draggingState.draggingClip!.startTime /
+                                              secondsPerRowScaled)
+                                          .floor())
+                                Positioned.fill(
+                                  child: Container(
+                                    color: Colors.yellow.withOpacity(0.1),
+                                  ),
+                                ),
+                            ],
+                          ),
+
+                          // 轨道内容 - 移除左侧的轨道名称，只显示内容部分
+                          _buildTracks(
+                            ref,
+                            rowStartTime: rowStartTime,
+                            rowEndTime: rowEndTime,
+                            viewportWidth: viewportWidth,
+                          ),
+
+                          // 行间距
+                          SizedBox(height: config.rowSpacing),
+                        ],
+                      );
+                    }),
+                  ),
+
+                  // 播放指针
+                  _buildPlayhead(
+                    ref,
+                    viewportWidth: viewportWidth,
+                    secondsPerRowScaled: secondsPerRowScaled,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // 拖动状态指示器
+        _buildDraggingPositionIndicator(),
+      ],
+    );
+  }
+
+  // 计算可见行高
+  double _calculateVisibleRowHeight(DawConfig config, int visibleTrackCount,
+      bool isDragging, int? activeTrackIndex) {
+    if (isDragging && activeTrackIndex != null) {
+      // 拖动状态下，行高只计算时间轴+活跃轨道+间距
+      return config.timelineHeight + config.trackHeight + config.rowSpacing;
+    } else {
+      // 正常状态下，行高为时间轴+可见轨道+间距
+      return config.timelineHeight +
+          (visibleTrackCount * config.trackHeight) +
+          config.rowSpacing;
+    }
+  }
+
+  // 构建时间轴标尺 - 改进版本支持更多小节
   Widget _buildTimelineRuler(
     WidgetRef ref, {
     required double rowStartTime,
@@ -572,10 +1038,24 @@ class MobileDawPage extends ConsumerWidget {
     final double secondsPerBar = secondsPerBeat * timeUtils.beatsPerBar;
     final double pixelsPerBar = (secondsPerBar / rowDuration) * viewportWidth;
 
-    // 决定显示间隔 - 如果小节太密集，则按间隔显示
+    // 动态调整显示间隔 - 根据小节范围调整显示策略
     int barDisplayInterval = 1;
+
+    // 如果小节密度太高，动态调整间隔
     if (pixelsPerBar < minPixelsBetweenBars) {
       barDisplayInterval = (minPixelsBetweenBars / pixelsPerBar).ceil();
+
+      // 为大数字优化显示间隔
+      if (startBar > 100) {
+        // 超过100小节时，按10的倍数显示
+        barDisplayInterval = Math.max(barDisplayInterval, 10);
+      } else if (startBar > 32) {
+        // 超过32小节时，至少按4的倍数显示
+        barDisplayInterval = Math.max(barDisplayInterval, 4);
+      } else if (startBar > 16) {
+        // 超过16小节时，至少按2的倍数显示
+        barDisplayInterval = Math.max(barDisplayInterval, 2);
+      }
     }
 
     // 分隔线数量 - 保证足够的分辨率
@@ -629,6 +1109,9 @@ class MobileDawPage extends ConsumerWidget {
               bool shouldDisplayNumber =
                   isMainMark && (bar % barDisplayInterval == 0);
 
+              // 使用TimeUtils的方法格式化小节显示
+              String barText = timeUtils.formatBarDisplay(bar);
+
               return Positioned(
                 left: markPosition,
                 top: 0,
@@ -666,9 +1149,9 @@ class MobileDawPage extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(2),
                             ),
                             child: Text(
-                              '$bar',
+                              barText,
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: bar > 100 ? 8 : 10, // 大数字使用更小的字体
                                 color: Colors.grey[800],
                                 fontWeight: FontWeight.w500,
                               ),
@@ -694,8 +1177,8 @@ class MobileDawPage extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(2),
                 ),
                 child: Text(
-                  '每${barDisplayInterval}个小节显示',
-                  style: TextStyle(
+                  '${startBar}-${endBar}小节 (间隔:${barDisplayInterval})',
+                  style: const TextStyle(
                     fontSize: 8,
                     color: Colors.white,
                   ),
@@ -703,262 +1186,6 @@ class MobileDawPage extends ConsumerWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  // 构建轨道内容
-  Widget _buildTracks(
-    WidgetRef ref, {
-    required double rowStartTime,
-    required double rowEndTime,
-    required double viewportWidth,
-  }) {
-    final tracks = ref.watch(tracksProvider);
-    final draggingState = ref.watch(draggingStateProvider);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(tracks.length, (trackIndex) {
-        final track = tracks[trackIndex];
-
-        // 如果轨道设置为不可见，则不显示
-        if (!track.isVisible) {
-          return const SizedBox();
-        }
-
-        // 如果正在拖动且不是活跃轨道，则不显示
-        if (draggingState.isDragging &&
-            draggingState.activeTrackIndex != null &&
-            trackIndex != draggingState.activeTrackIndex) {
-          return const SizedBox(height: 0); // 返回高度为0的轨道占位
-        }
-
-        return _buildTrackItem(
-          ref,
-          track: track,
-          trackIndex: trackIndex,
-          rowStartTime: rowStartTime,
-          rowEndTime: rowEndTime,
-          viewportWidth: viewportWidth,
-        );
-      }),
-    );
-  }
-
-  // 构建单个轨道
-  Widget _buildTrackItem(
-    WidgetRef ref, {
-    required Track track,
-    required int trackIndex,
-    required double rowStartTime,
-    required double rowEndTime,
-    required double viewportWidth,
-  }) {
-    final config = ref.watch(dawConfigProvider);
-
-    return SizedBox(
-      height: config.trackHeight,
-      width: viewportWidth,
-      child: Stack(
-        children: [
-          // 轨道背景
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey[300]!),
-                ),
-                color: trackIndex % 2 == 0 ? Colors.grey[50] : Colors.white,
-              ),
-            ),
-          ),
-
-          // 轨道名称
-          Positioned(
-            left: 8,
-            top: 4,
-            child: Text(
-              track.name,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-
-          // 绘制轨道上的所有片段
-          ...track.clips
-              .map((clip) => _buildClip(
-                    ref,
-                    clip: clip,
-                    trackIndex: trackIndex,
-                    rowStartTime: rowStartTime,
-                    rowEndTime: rowEndTime,
-                    viewportWidth: viewportWidth,
-                  ))
-              .toList(),
-        ],
-      ),
-    );
-  }
-
-  // 构建单个片段
-  Widget _buildClip(
-    WidgetRef ref, {
-    required Clip clip,
-    required int trackIndex,
-    required double rowStartTime,
-    required double rowEndTime,
-    required double viewportWidth,
-  }) {
-    final config = ref.watch(dawConfigProvider);
-    final draggingState = ref.watch(draggingStateProvider);
-    final draggingNotifier = ref.read(draggingStateProvider.notifier);
-
-    // 打印调试信息以确认片段位置
-    // print(
-    //     'Rendering clip ${clip.name} at startTime: ${clip.startTime}, in row: $rowStartTime-$rowEndTime');
-
-    // 检查片段是否在当前行的范围内
-    final clipStartTime = clip.startTime;
-    final clipEndTime = clip.startTime + clip.duration;
-
-    // 如果片段完全在当前行之外，就不显示
-    if (clipEndTime <= rowStartTime || clipStartTime >= rowEndTime) {
-      return const SizedBox();
-    }
-
-    // 计算片段在当前行中的开始和结束时间
-    final double startInRow =
-        (clipStartTime > rowStartTime) ? clipStartTime - rowStartTime : 0;
-    final double endInRow = (clipEndTime < rowEndTime)
-        ? clipEndTime - rowStartTime
-        : rowEndTime - rowStartTime;
-
-    // 计算片段在当前行中的宽度（根据视口宽度自适应）
-    final double clipWidthInRow =
-        (endInRow - startInRow) / (rowEndTime - rowStartTime) * viewportWidth;
-
-    // 计算片段在当前行中的位置（根据视口宽度自适应）
-    final double clipLeftInRow =
-        startInRow / (rowEndTime - rowStartTime) * viewportWidth;
-
-    // print(
-    //     'Clip ${clip.name} rendered at left: $clipLeftInRow, width: $clipWidthInRow');
-
-    // 判断是否为当前正在拖动的片段
-    final bool isCurrentlyDragging = draggingState.isDragging &&
-        draggingState.draggingClip != null &&
-        draggingState.draggingClip!.name == clip.name &&
-        draggingState.draggingClip!.type == clip.type &&
-        draggingState.draggingClip!.color == clip.color;
-
-    return Positioned(
-      key: ValueKey('clip_${clip.name}_${clip.startTime}'), // 添加key确保刷新
-      left: clipLeftInRow,
-      top: 20, // 在轨道名称下方
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque, // 确保即使在透明区域也能捕获事件
-        onPanStart: (details) {
-          // print(
-          //     'Dragging: PanStart at ${details.globalPosition} for clip ${clip.name}');
-
-          // 添加轻微触觉反馈
-          HapticFeedback.lightImpact();
-
-          draggingNotifier.startDragging(
-              clip, trackIndex, details.globalPosition);
-        },
-        onPanUpdate: (details) {
-          if (isCurrentlyDragging) {
-            // print('Dragging: PanUpdate at ${details.globalPosition}');
-            draggingNotifier.updateDragging(details.globalPosition);
-          }
-        },
-        onPanEnd: (details) {
-          if (isCurrentlyDragging) {
-            // print('Dragging: PanEnd');
-
-            // 添加触觉反馈，表示拖动结束
-            HapticFeedback.mediumImpact();
-
-            draggingNotifier.endDragging();
-          }
-        },
-        // 保留原有的长按处理以兼容移动设备
-        onLongPressStart: (details) {
-          // print(
-          //     'Dragging: LongPressStart at ${details.globalPosition} for clip ${clip.name}');
-
-          // 添加触觉反馈，表示长按开始
-          HapticFeedback.mediumImpact();
-
-          draggingNotifier.startDragging(
-              clip, trackIndex, details.globalPosition);
-        },
-        onLongPressMoveUpdate: (details) {
-          if (isCurrentlyDragging) {
-            // print('Dragging: LongPressMoveUpdate at ${details.globalPosition}');
-            draggingNotifier.updateDragging(details.globalPosition);
-          }
-        },
-        onLongPressEnd: (details) {
-          if (isCurrentlyDragging) {
-            // print('Dragging: LongPressEnd');
-            draggingNotifier.endDragging();
-          }
-        },
-        child: MouseRegion(
-          cursor: SystemMouseCursors.grab,
-          child: Container(
-            width: clipWidthInRow,
-            height: config.trackHeight - 25,
-            decoration: BoxDecoration(
-              color: clip.color.withOpacity(0.7),
-              border: Border.all(
-                color: isCurrentlyDragging ? Colors.yellow : clip.color,
-                width: isCurrentlyDragging ? 2 : 1,
-              ),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(clipStartTime >= rowStartTime ? 4 : 0),
-                bottomLeft:
-                    Radius.circular(clipStartTime >= rowStartTime ? 4 : 0),
-                topRight: Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
-                bottomRight: Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
-              ),
-              // 拖动时添加阴影效果
-              boxShadow: isCurrentlyDragging
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 5,
-                        offset: const Offset(2, 2),
-                      )
-                    ]
-                  : null,
-            ),
-            // 简化内容显示
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-              child: Center(
-                child: clipWidthInRow > 40
-                    ? Text(
-                        '${clip.name} (${clip.startTime.toStringAsFixed(1)}s)',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      )
-                    : const SizedBox(), // 宽度不足时不显示文本
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -971,42 +1198,76 @@ class MobileDawPage extends ConsumerWidget {
   }) {
     final config = ref.watch(dawConfigProvider);
     final playbackState = ref.watch(playbackProvider);
+    final tracks = ref.watch(tracksProvider);
+    final draggingState = ref.watch(draggingStateProvider);
 
-    // 计算当前播放位置所在的行
+    // 如果每行显示的时间太短，不显示播放指针
     if (secondsPerRowScaled < config.minSecondsPerRow) return const SizedBox();
 
+    // 计算当前播放位置所在的行
     final int currentRow =
         (playbackState.position / secondsPerRowScaled).floor();
+
+    // 计算当前行内的位置（秒）
     final double positionInRow =
         playbackState.position - (currentRow * secondsPerRowScaled);
 
-    // 计算指针在视口中的水平位置
-    final double xPosition =
-        (positionInRow / secondsPerRowScaled) * viewportWidth;
+    // 计算每秒对应的像素数
+    final double pixelsPerSecond = viewportWidth / secondsPerRowScaled;
+
+    // 计算精确的位置
+    final double exactXPosition = positionInRow * pixelsPerSecond;
+
+    // 使用整数对齐避免抗锯齿导致的模糊
+    final int pixelX = exactXPosition.round();
+
+    // 计算可见轨道数
+    final int visibleTrackCount =
+        tracks.where((track) => track.isVisible).length;
+
+    // 计算行的完整高度（包含间距）
+    double rowHeight = _calculateVisibleRowHeight(
+      config,
+      visibleTrackCount,
+      draggingState.isDragging,
+      draggingState.activeTrackIndex,
+    );
+
+    // 计算不包含间距的实际内容高度
+    double contentHeight;
+    if (draggingState.isDragging && draggingState.activeTrackIndex != null) {
+      // 拖动状态下只有一个轨道
+      contentHeight = config.timelineHeight + config.trackHeight;
+    } else {
+      // 正常状态下是所有可见轨道
+      contentHeight =
+          config.timelineHeight + (visibleTrackCount * config.trackHeight);
+    }
+
+    // 计算当前行的垂直位置
+    final double yPosition = currentRow * rowHeight;
 
     return Positioned(
-      left: xPosition,
-      top: 0,
-      child: Container(
-        width: 2,
-        height: MediaQuery.of(ref.context).size.height,
-        color: Colors.red.withOpacity(0.8),
-        child: Stack(
-          children: [
-            // 顶部三角形标记
-            Positioned(
-              top: 0,
-              left: -4,
-              child: SizedBox(
-                width: 10,
-                height: 8,
-                child: CustomPaint(
-                  painter: _TrianglePainter(color: Colors.red),
-                ),
-              ),
+      left: pixelX.toDouble(),
+      top: yPosition,
+      child: Column(
+        children: [
+          // 顶部圆点标记
+          Container(
+            width: 5,
+            height: 5,
+            decoration: const BoxDecoration(
+              color: Colors.red,
+              shape: BoxShape.circle,
             ),
-          ],
-        ),
+          ),
+          // 垂直线 - 精确计算高度，不延伸到间距
+          Container(
+            width: 1,
+            height: contentHeight - 5, // 减去圆点高度，且不包含行间距
+            color: Colors.red,
+          ),
+        ],
       ),
     );
   }
@@ -1033,6 +1294,16 @@ class MobileDawPage extends ConsumerWidget {
     if (barsInRow <= 4) return 2; // 当一行有3-4个小节时，显示2个分隔（每2拍一个）
     if (barsInRow <= 8) return 1; // 当一行有5-8个小节时，只在小节开始处显示分隔
     return 1; // 其他情况也只在小节开始处显示
+  }
+
+  // 开始播放
+  void _togglePlay(WidgetRef ref) {
+    final playbackNotifier = ref.read(playbackProvider.notifier);
+    if (playbackNotifier.state.isPlaying) {
+      playbackNotifier.togglePlay();
+    } else {
+      playbackNotifier.togglePlay();
+    }
   }
 }
 
