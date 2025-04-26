@@ -8,7 +8,7 @@ import 'playhead.dart';
 
 /// 时间线内容 - 显示时间轴和轨道内容的主要区域
 class TimelineContent extends ConsumerWidget {
-  const TimelineContent({Key? key}) : super(key: key);
+  const TimelineContent({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -55,7 +55,7 @@ class TimelineContent extends ConsumerWidget {
       config,
       tracks.where((track) => track.isVisible).length,
       draggingState.isDragging,
-      draggingState.activeTrackIndex,
+      draggingState.dragStartTrackIndex,
     );
 
     // 构建时间线滚动视图内容
@@ -115,20 +115,6 @@ class TimelineContent extends ConsumerWidget {
                                 rowCount: rowCount,
                                 viewportWidth: viewportWidth,
                               ),
-
-                              // 为当前行添加一个高亮指示器，方便调试
-                              // 如果是当前拖动片段所在的行，显示高亮背景
-                              if (draggingState.isDragging &&
-                                  draggingState.draggingClip != null &&
-                                  rowIndex ==
-                                      (draggingState.draggingClip!.startTime /
-                                              secondsPerRowScaled)
-                                          .floor())
-                                Positioned.fill(
-                                  child: Container(
-                                    color: Colors.yellow.withOpacity(0.1),
-                                  ),
-                                ),
                             ],
                           ),
 
@@ -186,8 +172,8 @@ class TimelineContent extends ConsumerWidget {
 
         // 如果正在拖动且不是活跃轨道，则不显示
         if (draggingState.isDragging &&
-            draggingState.activeTrackIndex != null &&
-            trackIndex != draggingState.activeTrackIndex) {
+            draggingState.dragStartTrackIndex != null &&
+            trackIndex != draggingState.dragStartTrackIndex) {
           return const SizedBox(height: 0); // 返回高度为0的轨道占位
         }
 
@@ -206,9 +192,15 @@ class TimelineContent extends ConsumerWidget {
   Widget _buildDraggingPositionIndicator(WidgetRef ref) {
     final draggingState = ref.watch(draggingStateProvider);
 
-    if (!draggingState.isDragging || draggingState.draggingClip == null) {
+    // Check isDragging and if we have a current drag position
+    if (!draggingState.isDragging ||
+        draggingState.currentDragPosition == null) {
       return const SizedBox();
     }
+
+    // Calculate the approximate time based on drag position if needed
+    // (For now, just show a generic dragging indicator or use dragStartTime)
+    final startTimeStr = draggingState.dragStartTime?.toStringAsFixed(2) ?? '?';
 
     return Positioned(
       top: 4,
@@ -220,17 +212,21 @@ class TimelineContent extends ConsumerWidget {
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
-          '${draggingState.draggingClip!.name}: ${draggingState.draggingClip!.startTime.toStringAsFixed(2)}s',
+          // Simplify: Show only start time or a generic message
+          'Dragging from: ${startTimeStr}s',
+          // '${draggingState.draggingClip!.name}: ${draggingState.draggingClip!.startTime.toStringAsFixed(2)}s', // Old code causing error
           style: const TextStyle(color: Colors.white, fontSize: 12),
         ),
       ),
     );
   }
 
-  // 计算可见行高
-  double _calculateVisibleRowHeight(final config, int visibleTrackCount,
-      bool isDragging, int? activeTrackIndex) {
-    if (isDragging && activeTrackIndex != null) {
+  // 计算可见行高 - Use dragStartTrackIndex
+  double _calculateVisibleRowHeight(DawConfig config, int visibleTrackCount,
+      bool isDragging, int? dragStartTrackIndex) {
+    // Parameter renamed
+    if (isDragging && dragStartTrackIndex != null) {
+      // Check renamed parameter
       // 拖动状态下，行高只计算时间轴+活跃轨道+间距
       return config.timelineHeight + config.trackHeight + config.rowSpacing;
     } else {

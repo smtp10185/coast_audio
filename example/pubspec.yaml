@@ -23,6 +23,7 @@ dependencies:
   riverpod: ^2.6.1
   flutter_riverpod: ^2.6.1
   hooks_riverpod: ^2.6.1
+  uuid: ^4.4.0      
 
 dev_dependencies:
   flutter_test:

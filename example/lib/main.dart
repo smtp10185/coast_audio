@@ -6,6 +6,7 @@ import 'package:example/main_page.dart';
 import 'package:example/models/audio_state.dart';
 import 'package:example/pages/backend_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 Future<void> main() async {
@@ -19,7 +20,25 @@ Future<void> main() async {
     await session.setActive(true);
   }
 
+  // 注册键盘事件拦截器，处理可能导致崩溃的键盘事件
+  ServicesBinding.instance.keyboard.addHandler(_keyboardEventInterceptor);
+
   runApp(const ProviderScope(child: App()));
+}
+
+/// 键盘事件拦截器
+/// 返回true表示事件已处理，不需要继续传递
+/// 返回false表示需要继续传递事件
+bool _keyboardEventInterceptor(KeyEvent event) {
+  // 拦截可能导致问题的Meta/Windows键事件
+  if (event.logicalKey == LogicalKeyboardKey.metaLeft ||
+      event.logicalKey == LogicalKeyboardKey.metaRight) {
+    // 拦截事件，防止它传递到Flutter的默认处理程序
+    return true;
+  }
+
+  // 对于其他键，让Flutter继续正常处理
+  return false;
 }
 
 class App extends StatefulWidget {

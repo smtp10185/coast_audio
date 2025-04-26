@@ -13,13 +13,13 @@ class TimelineRuler extends ConsumerWidget {
   final double viewportWidth;
 
   const TimelineRuler({
-    Key? key,
+    super.key,
     required this.rowStartTime,
     required this.rowEndTime,
     required this.rowIndex,
     required this.rowCount,
     required this.viewportWidth,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -6,6 +6,10 @@ import '../models/track.dart';
 import '../utils/time_utils.dart';
 import 'dart:math' as Math;
 
+// --- Debugging Flag ---
+const bool _kDebugDragging = false; // Set to true to enable dragging logs
+// ---------------------
+
 // 时间线配置常量提供者
 final dawConfigProvider = Provider<DawConfig>((ref) {
   return const DawConfig(
@@ -46,6 +50,45 @@ class DawConfig {
 class TracksNotifier extends StateNotifier<List<Track>> {
   TracksNotifier()
       : super([
+          // 和弦轨道放在第一位
+          Track(
+            name: '和弦轨道',
+            type: TrackType.chord,
+            clips: [
+              Clip(
+                name: 'Cmaj7',
+                startTime: 1.0,
+                duration: 2.0,
+                color: Colors.purple,
+                type: ClipType.chord,
+                chordValue: 'Cmaj7',
+              ),
+              Clip(
+                name: 'Dm7',
+                startTime: 3.0,
+                duration: 2.0,
+                color: Colors.purple,
+                type: ClipType.chord,
+                chordValue: 'Dm7',
+              ),
+              Clip(
+                name: 'G7',
+                startTime: 5.0,
+                duration: 2.0,
+                color: Colors.purple,
+                type: ClipType.chord,
+                chordValue: 'G7',
+              ),
+              Clip(
+                name: 'Cmaj7',
+                startTime: 7.0,
+                duration: 2.0,
+                color: Colors.purple,
+                type: ClipType.chord,
+                chordValue: 'Cmaj7',
+              ),
+            ],
+          ),
           Track(
             name: '轨道 1',
             clips: [
@@ -128,7 +171,14 @@ class TracksNotifier extends StateNotifier<List<Track>> {
     }
 
     state = state.map((track) {
+      // 寻找包含目标 Clip 的轨道
+      bool trackContainsClip = track.clips.any((c) => c == clip);
+      if (!trackContainsClip) {
+        return track; // 如果当前轨道不包含该 Clip，直接返回
+      }
+
       final updatedClips = track.clips.map((c) {
+        // 如果是目标 Clip，创建一个包含新 startTime 和保留其他属性（包括 chordValue）的新实例
         if (c == clip) {
           final updatedClip = Clip(
             name: c.name,
@@ -136,34 +186,29 @@ class TracksNotifier extends StateNotifier<List<Track>> {
             duration: c.duration,
             color: c.color,
             type: c.type,
+            chordValue: c.chordValue, // 确保 chordValue 被复制过来
           );
+          // Only print if the debug flag is true
+          if (_kDebugDragging) {
+            print(
+                'Updating clip: ${c.toString()} -> ${updatedClip.toString()}'); // Debugging
+          }
           return updatedClip;
         }
         return c;
       }).toList();
 
-      // 检查clips是否有更新
-      bool hasUpdates = false;
-      for (int i = 0; i < track.clips.length; i++) {
-        if (i < updatedClips.length &&
-            track.clips[i].startTime != updatedClips[i].startTime) {
-          hasUpdates = true;
-          break;
-        }
-      }
-
-      if (hasUpdates) {
-        return Track(
-          name: track.name,
-          clips: updatedClips,
-          isVisible: track.isVisible,
-          isMuted: track.isMuted,
-          isSolo: track.isSolo,
-          volume: track.volume,
-          pan: track.pan,
-        );
-      }
-      return track;
+      // 创建更新后的 Track 实例
+      return Track(
+        name: track.name,
+        clips: updatedClips,
+        type: track.type, // 确保保留 track 类型
+        isVisible: track.isVisible,
+        isMuted: track.isMuted,
+        isSolo: track.isSolo,
+        volume: track.volume,
+        pan: track.pan,
+      );
     }).toList();
   }
 
@@ -184,6 +229,80 @@ class TracksNotifier extends StateNotifier<List<Track>> {
     ];
 
     return colors[index % colors.length];
+  }
+
+  // Update Clip position using its unique ID
+  void updateClipPositionById(String clipId, double newStartTime) {
+    // Find the track and clip indices
+    int? targetTrackIndex;
+    int? targetClipIndex;
+    Clip? originalClip;
+
+    for (int i = 0; i < state.length; i++) {
+      try {
+        targetClipIndex = state[i].clips.indexWhere((c) => c.id == clipId);
+        if (targetClipIndex != -1) {
+          targetTrackIndex = i;
+          originalClip = state[i].clips[targetClipIndex];
+          break;
+        }
+      } catch (e) {
+        /* Should not happen with indexWhere, but belt and suspenders */
+      }
+    }
+
+    // If clip not found, do nothing
+    if (targetTrackIndex == null ||
+        targetClipIndex == null ||
+        originalClip == null) {
+      print("Error in updateClipPositionById: Clip with ID $clipId not found.");
+      return;
+    }
+
+    // Avoid update if time hasn't changed significantly
+    if ((originalClip.startTime - newStartTime).abs() < 0.001) {
+      return;
+    }
+
+    // Create the updated Clip instance
+    final updatedClip = Clip(
+      id: originalClip.id, // Preserve the ID
+      name: originalClip.name,
+      startTime: newStartTime,
+      duration: originalClip.duration,
+      color: originalClip.color,
+      type: originalClip.type,
+      chordValue: originalClip.chordValue,
+    );
+
+    // Create a new list of tracks with the updated clip
+    state = [
+      for (int i = 0; i < state.length; i++)
+        if (i == targetTrackIndex)
+          // Create a new Track instance with the updated clips list
+          Track(
+            name: state[i].name,
+            type: state[i].type,
+            isVisible: state[i].isVisible,
+            isMuted: state[i].isMuted,
+            isSolo: state[i].isSolo,
+            volume: state[i].volume,
+            pan: state[i].pan,
+            clips: [
+              ...state[i].clips.sublist(0, targetClipIndex),
+              updatedClip, // Insert the updated clip
+              ...state[i].clips.sublist(targetClipIndex + 1),
+            ],
+          )
+        else
+          state[i] // Keep other tracks as they are (same reference)
+    ];
+
+    // Optional debug log
+    if (_kDebugDragging) {
+      print(
+          'Updated clip by ID: ${originalClip.toString()} -> ${updatedClip.toString()}');
+    }
   }
 }
 
@@ -371,7 +490,7 @@ class ScrollControllerNotifier extends StateNotifier<ScrollController> {
       config,
       tracks.where((track) => track.isVisible).length,
       draggingState.isDragging,
-      draggingState.activeTrackIndex,
+      draggingState.dragStartTrackIndex,
     );
 
     // 计算每行可显示的秒数
@@ -408,8 +527,8 @@ class ScrollControllerNotifier extends StateNotifier<ScrollController> {
 
   // 计算行高
   double _calculateRowHeight(DawConfig config, int visibleTrackCount,
-      bool isDragging, int? activeTrackIndex) {
-    if (isDragging && activeTrackIndex != null) {
+      bool isDragging, int? dragStartTrackIndex) {
+    if (isDragging && dragStartTrackIndex != null) {
       // 拖动状态下，行高只计算时间轴+活跃轨道+间距
       return config.timelineHeight + config.trackHeight + config.rowSpacing;
     } else {
@@ -451,40 +570,36 @@ final viewportWidthProvider =
 // 拖动操作状态
 class DraggingState {
   final bool isDragging;
-  final Clip? draggingClip;
+  final String? draggingClipId;
   final Offset? dragStartPosition;
   final int? dragStartTrackIndex;
   final double? dragStartTime;
   final Offset? currentDragPosition;
-  final int? activeTrackIndex;
 
   DraggingState({
     required this.isDragging,
-    this.draggingClip,
+    this.draggingClipId,
     this.dragStartPosition,
     this.dragStartTrackIndex,
     this.dragStartTime,
     this.currentDragPosition,
-    this.activeTrackIndex,
   });
 
   DraggingState copyWith({
     bool? isDragging,
-    Clip? draggingClip,
+    String? draggingClipId,
     Offset? dragStartPosition,
     int? dragStartTrackIndex,
     double? dragStartTime,
     Offset? currentDragPosition,
-    int? activeTrackIndex,
   }) {
     return DraggingState(
       isDragging: isDragging ?? this.isDragging,
-      draggingClip: draggingClip ?? this.draggingClip,
+      draggingClipId: draggingClipId ?? this.draggingClipId,
       dragStartPosition: dragStartPosition ?? this.dragStartPosition,
       dragStartTrackIndex: dragStartTrackIndex ?? this.dragStartTrackIndex,
       dragStartTime: dragStartTime ?? this.dragStartTime,
       currentDragPosition: currentDragPosition ?? this.currentDragPosition,
-      activeTrackIndex: activeTrackIndex ?? this.activeTrackIndex,
     );
   }
 
@@ -492,12 +607,11 @@ class DraggingState {
   DraggingState clear() {
     return DraggingState(
       isDragging: false,
-      draggingClip: null,
+      draggingClipId: null,
       dragStartPosition: null,
       dragStartTrackIndex: null,
       dragStartTime: null,
       currentDragPosition: null,
-      activeTrackIndex: null,
     );
   }
 }
@@ -510,24 +624,27 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
   // 开始拖动
   void startDragging(Clip clip, int trackIndex, Offset globalPosition) {
     if (state.isDragging) {
+      // If somehow a drag is already active, end it first.
+      print(
+          "Warning: Starting a new drag while another was active. Ending previous.");
       endDragging();
     }
 
+    print("Starting drag for Clip ID: ${clip.id}"); // Debug
     state = DraggingState(
       isDragging: true,
-      draggingClip: clip,
+      draggingClipId: clip.id, // Store the ID
       dragStartPosition: globalPosition,
       currentDragPosition: globalPosition,
       dragStartTrackIndex: trackIndex,
       dragStartTime: clip.startTime,
-      activeTrackIndex: trackIndex,
     );
   }
 
   // 更新拖动位置
   void updateDragging(Offset globalPosition) {
     if (!state.isDragging ||
-        state.draggingClip == null ||
+        state.draggingClipId == null || // Check ID
         state.dragStartPosition == null) {
       return;
     }
@@ -538,8 +655,6 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
     final viewportWidth = _ref.read(viewportWidthProvider);
 
     final double scaledPixelsPerSecond = config.pixelsPerSecond * zoom.scale;
-
-    // 根据可用宽度计算每行可显示的秒数
     final double adaptiveSecondsPerRow =
         (viewportWidth / scaledPixelsPerSecond).floor().toDouble();
     final double secondsPerRowScaled =
@@ -547,132 +662,114 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
             ? adaptiveSecondsPerRow
             : config.minSecondsPerRow;
 
-    // 计算位移
     final delta = globalPosition - state.dragStartPosition!;
-
-    // 计算水平方向的时间偏移 - 直接使用更简单的方法计算
     final double pixelsPerSecond = viewportWidth / secondsPerRowScaled;
     final double timeDelta = delta.dx / pixelsPerSecond;
 
-    // 获取当前Clip的实际引用
+    // ----- Find the clip being dragged based on the stored ID -----
     Clip? currentClip;
-    int? trackIndex;
-
-    // 在所有轨道中查找匹配的片段
+    int? trackIndex = state.dragStartTrackIndex;
     final tracks = _ref.read(tracksProvider);
-    for (int i = 0; i < tracks.length; i++) {
-      for (var c in tracks[i].clips) {
-        if (c.name == state.draggingClip!.name &&
-            c.type == state.draggingClip!.type &&
-            c.color == state.draggingClip!.color) {
-          currentClip = c;
-          trackIndex = i;
-          break;
-        }
+
+    if (trackIndex != null && trackIndex < tracks.length) {
+      final targetTrack = tracks[trackIndex];
+      try {
+        // Find the clip using its unique ID
+        currentClip =
+            targetTrack.clips.firstWhere((c) => c.id == state.draggingClipId);
+      } catch (e) {
+        // Could happen if the clip was somehow removed between drag updates
+        print(
+            "Error: Clip with ID ${state.draggingClipId} not found in track $trackIndex. Aborting update.");
+        // Optionally try a global search, but ID should be reliable
+        // If not found, currentClip remains null
       }
-      if (currentClip != null) break;
+    } else {
+      print(
+          "Error: Invalid dragStartTrackIndex ${state.dragStartTrackIndex}. Aborting update.");
     }
 
+    // 如果找不到 Clip，则停止处理
     if (currentClip == null) {
-      return;
+      // No need to print again, error handled above
+      return; // Abort the update
     }
+    // ----- End finding clip -----
 
-    // 计算垂直方向的行偏移
+    // --- Calculate new position (logic mostly unchanged) ---
     final double rowHeight = _calculateRowHeight();
     final double rowDelta = delta.dy / rowHeight;
     int rowOffset = rowDelta.round();
 
-    // 计算当前片段所在的行
     final int currentRow = (state.dragStartTime! / secondsPerRowScaled).floor();
-
-    // 计算行数上限
     final int totalRows = (config.totalSeconds / secondsPerRowScaled).ceil();
     final int lastRow = totalRows - 1;
 
-    // 检查行偏移是否会超出边界
-    if (currentRow + rowOffset < 0) {
-      // 不允许向上超过第一行
+    if (currentRow + rowOffset < 0)
       rowOffset = -currentRow;
-    } else if (currentRow + rowOffset > lastRow) {
-      // 不允许向下超过最后一行
-      rowOffset = lastRow - currentRow;
-    }
+    else if (currentRow + rowOffset > lastRow) rowOffset = lastRow - currentRow;
 
-    // 计算新的开始时间（先不考虑行偏移）
     double newStartTime = state.dragStartTime! + timeDelta;
-
-    // 计算绝对安全的时间范围
     final double maxAllowedStartTime =
         config.totalSeconds - currentClip.duration;
 
-    // 如果在考虑行偏移之前，时间已经接近最大值，特殊处理
+    // Boundary checks (keep previous logic for now)
     if (newStartTime > maxAllowedStartTime * 0.95) {
-      // 如果接近最大值，并且尝试向下拖动到最后一行以外，则强制锁定在最后一行
       if (rowOffset > 0 && currentRow + rowOffset >= lastRow) {
-        // 计算最后一行的最佳位置
         final double lastRowStartTime = lastRow * secondsPerRowScaled;
         final double maxOffsetInLastRow =
             maxAllowedStartTime - lastRowStartTime;
-
-        // 将位置固定到最后一行的合适位置，防止溢出
         if (maxOffsetInLastRow > 0) {
-          // 有空间可以放置clip
           newStartTime = lastRowStartTime +
-              Math.min(
-                  maxOffsetInLastRow * 0.9, // 留10%的安全空间
-                  secondsPerRowScaled * 0.5); // 或者放在行的中间位置
+              Math.min(maxOffsetInLastRow * 0.9, secondsPerRowScaled * 0.5);
         } else {
-          // 最后一行空间不足，尽可能靠近末尾但不超出
           newStartTime = Math.max(0, maxAllowedStartTime - 0.1);
         }
-
-        // 禁止任何垂直偏移计算
         rowOffset = 0;
       }
     }
-
-    // 如果是尝试跨行，检查是否仍在安全范围内
     if (rowOffset != 0) {
       double potentialNewTime =
           newStartTime + (rowOffset * secondsPerRowScaled);
-
-      // 如果新时间超出范围，禁止跨行操作
       if (potentialNewTime < 0 || potentialNewTime > maxAllowedStartTime) {
-        // 如果跨行会导致越界，取消行偏移
         rowOffset = 0;
       } else {
-        // 应用行偏移
         newStartTime = potentialNewTime;
       }
     }
-
-    // 最终安全检查，确保时间绝对在合法范围内
     newStartTime = Math.max(0, Math.min(maxAllowedStartTime, newStartTime));
-
-    // 额外的防跳变检查
     final int newRow = (newStartTime / secondsPerRowScaled).floor();
-    if (currentRow == lastRow && newRow < lastRow - 1) {
-      // 如果从最后一行跳变到比上一行更前面的行，限制到上一行
+    if (currentRow == lastRow && newRow < lastRow - 1)
       newStartTime = (lastRow - 1) * secondsPerRowScaled + 0.1;
-    } else if (newRow > lastRow) {
-      // 如果计算出的行超过最后一行，强制限制在最后一行
+    else if (newRow > lastRow)
       newStartTime = lastRow * secondsPerRowScaled + 0.1;
-    }
+    // --- End calculating new position ---
 
-    // 使用找到的真实片段引用更新位置
-    tracksNotifier.updateClipPosition(currentClip, newStartTime);
+    // 使用找到的 Clip 引用和新时间更新位置
+    // Pass the ID to updateClipPosition for reliable finding there too
+    tracksNotifier.updateClipPositionById(state.draggingClipId!, newStartTime);
 
-    // 确保视图跟随 - 使视图跟随优化为只在必要时滚动
+    // Update dragging state (no need to update draggingClip reference anymore)
+    state = state.copyWith(currentDragPosition: globalPosition);
+
+    // Ensure visible scroll logic (remains the same)
     if (_shouldEnsureVisible(newStartTime)) {
       _ensureVisibleWhenDragging(newStartTime);
     }
+  }
 
-    // 更新拖动状态，使用找到的真实轨道索引
-    state = state.copyWith(
-      currentDragPosition: globalPosition,
-      draggingClip: currentClip, // 使用找到的真实片段引用
-      activeTrackIndex: trackIndex,
-    );
+  // 结束拖动
+  void endDragging() {
+    // Use ID if needed for final actions
+    final lastClipId = state.draggingClipId;
+    final lastPos = state.currentDragPosition;
+
+    if (lastClipId != null) {
+      print("Ending drag for Clip ID: $lastClipId"); // Debug
+      // Perform any final actions based on ID and position
+    }
+
+    state = state.clear();
   }
 
   // 辅助方法：判断是否需要确保可见
@@ -709,19 +806,6 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
     final double visibleMargin = viewportHeight * 0.2; // 20%的边距
     return rowPosition < scrollTop + visibleMargin ||
         rowPosition > scrollBottom - rowHeight - visibleMargin;
-  }
-
-  // 结束拖动
-  void endDragging() {
-    final lastClip = state.draggingClip;
-    final lastPos = state.currentDragPosition;
-    final lastStart = state.dragStartPosition;
-
-    if (lastClip != null && lastPos != null && lastStart != null) {
-      // 最后一次拖动结束时的处理
-    }
-
-    state = state.clear();
   }
 
   // 确保拖动时Clip始终可见
@@ -781,7 +865,7 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
     final config = _ref.read(dawConfigProvider);
     final tracks = _ref.read(tracksProvider);
 
-    if (state.isDragging && state.activeTrackIndex != null) {
+    if (state.isDragging && state.dragStartTrackIndex != null) {
       // 拖动状态下，行高只计算时间轴+活跃轨道+间距
       return config.timelineHeight + config.trackHeight + config.rowSpacing;
     } else {

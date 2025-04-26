@@ -13,13 +13,13 @@ class ClipItem extends ConsumerWidget {
   final double viewportWidth;
 
   const ClipItem({
-    Key? key,
+    super.key,
     required this.clip,
     required this.trackIndex,
     required this.rowStartTime,
     required this.rowEndTime,
     required this.viewportWidth,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -66,13 +66,14 @@ class ClipItem extends ConsumerWidget {
 
     // 判断是否为当前正在拖动的片段
     final bool isCurrentlyDragging = draggingState.isDragging &&
-        draggingState.draggingClip != null &&
-        draggingState.draggingClip!.name == clip.name &&
-        draggingState.draggingClip!.type == clip.type &&
-        draggingState.draggingClip!.color == clip.color;
+        draggingState.draggingClipId != null &&
+        draggingState.draggingClipId == clip.id;
+
+    // 是否为和弦片段
+    final bool isChordClip = clip.type == ClipType.chord;
 
     return Positioned(
-      key: ValueKey('clip_${clip.name}_${clip.startTime}'), // 添加key确保刷新
+      key: ValueKey('clip_${clip.id}'),
       left: clipLeftInRow,
       top: 4, // 调整位置，不再需要为轨道名称留空间
       child: GestureDetector(
@@ -112,26 +113,56 @@ class ClipItem extends ConsumerWidget {
             draggingNotifier.endDragging();
           }
         },
+        onTap: () {
+          // 点击和弦片段时显示和弦详情或跳转到和弦编辑页面
+          if (isChordClip) {
+            // 显示和弦信息的Toast
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('和弦: ${clip.chordValue}'),
+                duration: const Duration(seconds: 1),
+                action: SnackBarAction(
+                  label: '编辑',
+                  onPressed: () {
+                    // 这里可以添加跳转到和弦编辑页面的逻辑
+                    print('编辑和弦 ${clip.chordValue}');
+                  },
+                ),
+              ),
+            );
+          }
+        },
         child: MouseRegion(
           cursor: SystemMouseCursors.grab,
           child: Container(
             width: clipWidthInRow,
             height: config.trackHeight - 10, // 调整高度，更贴近轨道高度
             decoration: BoxDecoration(
-              color: clip.color.withOpacity(0.7),
+              color: isChordClip
+                  ? Colors.transparent // 和弦片段使用透明背景
+                  : clip.color.withOpacity(0.7),
               border: Border.all(
-                color: isCurrentlyDragging ? Colors.yellow : clip.color,
+                color: isCurrentlyDragging
+                    ? Colors.yellow
+                    : isChordClip
+                        ? Colors.transparent // 和弦片段不需要边框
+                        : clip.color,
                 width: isCurrentlyDragging ? 2 : 1,
               ),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(clipStartTime >= rowStartTime ? 4 : 0),
-                bottomLeft:
-                    Radius.circular(clipStartTime >= rowStartTime ? 4 : 0),
-                topRight: Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
-                bottomRight: Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
-              ),
+              borderRadius: isChordClip
+                  ? BorderRadius.zero // 和弦片段不需要圆角
+                  : BorderRadius.only(
+                      topLeft: Radius.circular(
+                          clipStartTime >= rowStartTime ? 4 : 0),
+                      bottomLeft: Radius.circular(
+                          clipStartTime >= rowStartTime ? 4 : 0),
+                      topRight:
+                          Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
+                      bottomRight:
+                          Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
+                    ),
               // 拖动时添加阴影效果
-              boxShadow: isCurrentlyDragging
+              boxShadow: isCurrentlyDragging && !isChordClip
                   ? [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.3),
@@ -141,28 +172,73 @@ class ClipItem extends ConsumerWidget {
                     ]
                   : null,
             ),
-            // 简化内容显示
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-              child: Center(
-                child: clipWidthInRow > 40
-                    ? Text(
-                        '${clip.name} (${clip.startTime.toStringAsFixed(1)}s)',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      )
-                    : const SizedBox(), // 宽度不足时不显示文本
-              ),
-            ),
+            child: _buildClipContent(clipWidthInRow, isChordClip),
           ),
         ),
       ),
     );
+  }
+
+  // 构建片段内容
+  Widget _buildClipContent(double clipWidth, bool isChordClip) {
+    if (isChordClip) {
+      // 定义渲染标记+文本所需的最小宽度 (例如，标记2px + 边距4px + 文本最小空间4px)
+      const double minWidthForFullContent = 10.0;
+
+      // 如果可用宽度太小，则只显示起始标记线
+      if (clipWidth < minWidthForFullContent) {
+        return Container(
+          width: 2, // 仅显示起始标记的宽度
+          color: Colors.deepPurple,
+          alignment: Alignment.centerLeft, // 确保它靠左
+        );
+      }
+
+      // 如果宽度足够，则显示完整的 Row (标记 + 文本)
+      return Row(
+        key: const ValueKey(
+            'chord_clip_content_row'), // Add key for potential state issues
+        children: [
+          // 左侧位置标记
+          Container(
+            width: 2,
+            color: Colors.deepPurple,
+            margin: const EdgeInsets.only(right: 4),
+          ),
+          // 和弦文本
+          Expanded(
+            child: Text(
+              clip.chordValue ?? '?',
+              style: const TextStyle(
+                color: Colors.deepPurple,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+    } else {
+      // 普通片段的显示
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+        child: Center(
+          child: clipWidth > 40
+              ? Text(
+                  '${clip.name} (${clip.startTime.toStringAsFixed(1)}s)',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                )
+              : const SizedBox(), // 宽度不足时不显示文本
+        ),
+      );
+    }
   }
 }

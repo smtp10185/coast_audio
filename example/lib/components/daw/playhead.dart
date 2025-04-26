@@ -8,10 +8,10 @@ class Playhead extends ConsumerWidget {
   final double secondsPerRowScaled;
 
   const Playhead({
-    Key? key,
+    super.key,
     required this.viewportWidth,
     required this.secondsPerRowScaled,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,12 +49,12 @@ class Playhead extends ConsumerWidget {
       config,
       visibleTrackCount,
       draggingState.isDragging,
-      draggingState.activeTrackIndex,
+      draggingState.dragStartTrackIndex,
     );
 
     // 计算不包含间距的实际内容高度
     double contentHeight;
-    if (draggingState.isDragging && draggingState.activeTrackIndex != null) {
+    if (draggingState.isDragging && draggingState.dragStartTrackIndex != null) {
       // 拖动状态下只有一个轨道
       contentHeight = config.timelineHeight + config.trackHeight;
     } else {
@@ -93,8 +93,8 @@ class Playhead extends ConsumerWidget {
 
   // 计算可见行高
   double _calculateVisibleRowHeight(final config, int visibleTrackCount,
-      bool isDragging, int? activeTrackIndex) {
-    if (isDragging && activeTrackIndex != null) {
+      bool isDragging, int? dragStartTrackIndex) {
+    if (isDragging && dragStartTrackIndex != null) {
       // 拖动状态下，行高只计算时间轴+活跃轨道+间距
       return config.timelineHeight + config.trackHeight + config.rowSpacing;
     } else {

@@ -13,19 +13,23 @@ class TrackItem extends ConsumerWidget {
   final double viewportWidth;
 
   const TrackItem({
-    Key? key,
+    super.key,
     required this.track,
     required this.trackIndex,
     required this.rowStartTime,
     required this.rowEndTime,
     required this.viewportWidth,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(dawConfigProvider);
     final tracksNotifier = ref.read(tracksProvider.notifier);
-    final Color trackColor = tracksNotifier.getTrackColor(trackIndex);
+    final Color trackColor = track.type == TrackType.chord
+        ? Colors.purple // 和弦轨道使用固定的紫色
+        : tracksNotifier.getTrackColor(trackIndex);
+
+    final bool isChordTrack = track.type == TrackType.chord;
 
     return SizedBox(
       height: config.trackHeight,
@@ -39,9 +43,13 @@ class TrackItem extends ConsumerWidget {
                 border: Border(
                   bottom: BorderSide(color: Colors.grey[300]!),
                 ),
-                color: trackIndex % 2 == 0 ? Colors.grey[50] : Colors.white,
+                color: isChordTrack
+                    ? Colors.transparent // 和弦轨道使用透明背景
+                    : trackIndex % 2 == 0
+                        ? Colors.grey[50]
+                        : Colors.white,
               ),
-              // 左侧边框颜色指示器
+              // 左侧边框颜色指示器和标识
               child: Row(
                 children: [
                   Container(
