@@ -58,17 +58,20 @@ class MobileDawPage extends ConsumerWidget {
               ),
             ],
           ),
-          body: Column(
-            children: [
-              // 主要内容区域 - 占据所有可用空间
-              const Expanded(
-                child: TimelineContent(),
+          body: const TimelineContent(),
+          floatingActionButton: Consumer(builder: (context, ref, child) {
+            final playbackState = ref.watch(playbackProvider);
+            return FloatingActionButton(
+              tooltip: playbackState.isPlaying ? '暂停' : '播放',
+              onPressed: () => _togglePlay(ref),
+              child: Icon(
+                playbackState.isPlaying
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
               ),
-
-              // 播放控制栏 - 移至底部
-              const TransportControls(),
-            ],
-          ),
+            );
+          }),
+          bottomNavigationBar: const TransportControls(),
         ),
       );
     });
@@ -252,7 +255,7 @@ class MobileDawPage extends ConsumerWidget {
     );
   }
 
-  // 开始播放 - 已移到TransportControls
+  // 开始播放 - Now called by FAB
   void _togglePlay(WidgetRef ref) {
     final playbackNotifier = ref.read(playbackProvider.notifier);
     playbackNotifier.togglePlay();

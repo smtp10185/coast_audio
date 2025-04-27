@@ -26,61 +26,66 @@ class TransportControls extends ConsumerWidget {
     return Material(
       elevation: 4,
       color: Theme.of(context).colorScheme.surface,
-      child: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.only(top: 6, bottom: 8),
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(color: Colors.grey[300]!),
-            ),
+      child: Container(
+        padding: const EdgeInsets.only(top: 6, bottom: 8),
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: Colors.grey[300]!),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 主要控制按钮行
-              Row(
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 主要控制按钮行
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 左侧信息区域
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16),
-                    child: Row(
-                      children: [
-                        // 小节显示
-                        Icon(
-                          Icons.music_note,
-                          size: 14,
-                          color: Colors.green[600],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          barTimeDisplay,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey[800],
-                            fontFamily: 'monospace',
+                  // 左侧信息区域 - Wrap with Flexible
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                          left: 8), // Reduced left padding
+                      child: Row(
+                        mainAxisSize:
+                            MainAxisSize.min, // Shrink row to fit content
+                        children: [
+                          // 小节显示
+                          Icon(
+                            Icons.music_note,
+                            size: 14,
+                            color: Colors.green[600],
                           ),
-                        ),
-                        const SizedBox(width: 12),
+                          const SizedBox(width: 4),
+                          Text(
+                            barTimeDisplay,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[800],
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          const SizedBox(width: 8), // Reduced spacing
 
-                        // BPM显示
-                        Icon(
-                          Icons.speed,
-                          size: 14,
-                          color: Colors.orange[700],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          "$bpmDisplay",
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey[800],
+                          // BPM显示
+                          Icon(
+                            Icons.speed,
+                            size: 14,
+                            color: Colors.orange[700],
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 4),
+                          Text(
+                            "$bpmDisplay",
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[800],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
 
@@ -97,33 +102,8 @@ class TransportControls extends ConsumerWidget {
                         padding: EdgeInsets.zero,
                         color: Colors.grey[800],
                       ),
-
-                      // 播放/暂停按钮
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color:
-                              Theme.of(context).primaryColor.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: Icon(
-                            playbackState.isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            color: Theme.of(context).primaryColor,
-                          ),
-                          onPressed: () => _togglePlay(ref),
-                          iconSize: 28,
-                          padding: const EdgeInsets.all(4),
-                          constraints: const BoxConstraints(
-                            minWidth: 44,
-                            minHeight: 44,
-                          ),
-                          tooltip: playbackState.isPlaying ? '暂停' : '播放',
-                        ),
-                      ),
-
+                      const SizedBox(
+                          width: 16), // Add some space between skip and stop
                       // 停止按钮
                       IconButton(
                         icon: const Icon(Icons.stop),
@@ -136,65 +116,88 @@ class TransportControls extends ConsumerWidget {
                     ],
                   ),
 
-                  // 右侧自动滚动控制
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: InkWell(
-                      onTap: () => ref
-                          .read(playbackProvider.notifier)
-                          .toggleAutoScroll(),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              playbackState.disableAutoScroll
-                                  ? Icons.lock_outline
-                                  : Icons.lock_open_outlined,
-                              size: 14,
-                              color: playbackState.disableAutoScroll
-                                  ? Colors.red.shade400
-                                  : Colors.green.shade700,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              playbackState.disableAutoScroll ? '锁定' : '滚动',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.grey[800],
+                  // 右侧 - 磁吸和自动滚动控制
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 磁吸按钮
+                      Consumer(builder: (context, ref, child) {
+                        final isSnapping = ref.watch(snappingProvider);
+                        return IconButton(
+                          icon: Icon(
+                            Icons.auto_fix_high,
+                            color: isSnapping
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.grey[600],
+                            size: 20,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints:
+                              const BoxConstraints(minWidth: 36, minHeight: 36),
+                          tooltip: '切换节拍吸附 (${isSnapping ? "开" : "关"})',
+                          onPressed: () =>
+                              ref.read(snappingProvider.notifier).toggle(),
+                        );
+                      }),
+                      const SizedBox(width: 4),
+                      // 自动滚动控制
+                      InkWell(
+                        onTap: () => ref
+                            .read(playbackProvider.notifier)
+                            .toggleAutoScroll(),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                playbackState.disableAutoScroll
+                                    ? Icons.lock_outline
+                                    : Icons.lock_open_outlined,
+                                size: 14,
+                                color: playbackState.disableAutoScroll
+                                    ? Colors.red.shade400
+                                    : Colors.green.shade700,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 4),
+                              Text(
+                                playbackState.disableAutoScroll ? '锁定' : '滚动',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[800],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    ],
+                  )
                 ],
               ),
+            ),
 
-              // 时间显示，以文本形式显示在底部
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  secondsDisplay,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey[700],
-                    fontFamily: 'monospace',
-                  ),
+            // 时间显示，以文本形式显示在底部
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                secondsDisplay,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                  fontFamily: 'monospace',
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

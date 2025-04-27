@@ -14,6 +14,12 @@ class TimeUtils {
     this.beatsPerBar = 4,
   });
 
+  /// 计算一拍的时长(秒)
+  double get secondsPerBeat => 60.0 / bpm;
+
+  /// 计算一小节的时长(秒)
+  double get secondsPerBar => secondsPerBeat * beatsPerBar;
+
   /// 将秒数转换为小节格式的字符串 (例如: "1.1.00")
   /// [seconds] - 秒数
   /// 返回格式为 "小节.拍.细分" 的字符串
@@ -34,12 +40,6 @@ class TimeUtils {
       seconds = 0;
     }
 
-    // 计算一拍的时长(秒)
-    final double secondsPerBeat = 60.0 / bpm;
-
-    // 计算一小节的时长(秒)
-    final double secondsPerBar = secondsPerBeat * beatsPerBar;
-
     // 计算小节数 (从1开始)
     final int bar = (seconds / secondsPerBar).floor() + 1;
 
@@ -59,8 +59,8 @@ class TimeUtils {
       'bar': bar,
       'beat': beat,
       'ticks': ticks,
-      'secondsPerBar': secondsPerBar, // 添加每小节秒数，方便计算
-      'secondsPerBeat': secondsPerBeat, // 添加每拍秒数，方便计算
+      'secondsPerBar': secondsPerBar,
+      'secondsPerBeat': secondsPerBeat,
     };
   }
 
@@ -84,8 +84,6 @@ class TimeUtils {
   /// [seconds] - 秒数
   /// 返回完整小节数
   int calculateBars(double seconds) {
-    final double secondsPerBeat = 60.0 / bpm;
-    final double secondsPerBar = secondsPerBeat * beatsPerBar;
     return (seconds / secondsPerBar).floor();
   }
 
@@ -95,11 +93,8 @@ class TimeUtils {
   /// [ticks] - 细分 (0-99)
   /// 返回对应的秒数
   double barToSeconds(int bar, int beat, int ticks) {
-    // 计算一拍的时长(秒)
-    final double secondsPerBeat = 60.0 / bpm;
-
     // 小节部分的秒数 (小节从1开始，所以要减1)
-    final double barSeconds = (bar - 1) * beatsPerBar * secondsPerBeat;
+    final double barSeconds = (bar - 1) * secondsPerBar;
 
     // 拍部分的秒数 (拍从1开始，所以要减1)
     final double beatSeconds = (beat - 1) * secondsPerBeat;

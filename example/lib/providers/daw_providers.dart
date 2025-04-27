@@ -10,6 +10,23 @@ import 'dart:math' as Math;
 const bool _kDebugDragging = false; // Set to true to enable dragging logs
 // ---------------------
 
+// --- Snapping State ---
+class SnappingNotifier extends StateNotifier<bool> {
+  SnappingNotifier() : super(false); // Snapping defaults to off
+
+  void toggle() {
+    state = !state;
+  }
+}
+
+final snappingProvider = StateNotifierProvider<SnappingNotifier, bool>((ref) {
+  return SnappingNotifier();
+});
+// ---------------------
+
+// Define a constant for the snap activation threshold in pixels
+const double _kSnapActivationThresholdPixels = 10.0;
+
 // 时间线配置常量提供者
 final dawConfigProvider = Provider<DawConfig>((ref) {
   return const DawConfig(
@@ -644,7 +661,7 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
   // 更新拖动位置
   void updateDragging(Offset globalPosition) {
     if (!state.isDragging ||
-        state.draggingClipId == null || // Check ID
+        state.draggingClipId == null ||
         state.dragStartPosition == null) {
       return;
     }
@@ -653,7 +670,35 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
     final zoom = _ref.read(zoomProvider);
     final tracksNotifier = _ref.read(tracksProvider.notifier);
     final viewportWidth = _ref.read(viewportWidthProvider);
+    final timeUtils = _ref.read(timeUtilsProvider); // Get TimeUtils
+    final isSnappingEnabled = _ref.read(snappingProvider); // Get snapping state
 
+    // Find the clip using its unique ID
+    Clip? currentClip;
+    int? trackIndex = state.dragStartTrackIndex;
+    final tracks = _ref.read(tracksProvider);
+    if (trackIndex != null && trackIndex < tracks.length) {
+      final targetTrack = tracks[trackIndex];
+      try {
+        currentClip =
+            targetTrack.clips.firstWhere((c) => c.id == state.draggingClipId);
+      } catch (e) {
+        print(
+            "Error: Clip with ID ${state.draggingClipId} not found in track $trackIndex during update. Aborting.");
+        return; // Abort if clip not found by ID
+      }
+    } else {
+      print(
+          "Error: Invalid dragStartTrackIndex ${state.dragStartTrackIndex} during update. Aborting.");
+      return; // Abort if track index is invalid
+    }
+    if (currentClip == null) {
+      print(
+          "Error: Could not find the clip being dragged (ID: ${state.draggingClipId}). Aborting update.");
+      return;
+    }
+
+    // --- Calculate Position & Apply Snapping ---
     final double scaledPixelsPerSecond = config.pixelsPerSecond * zoom.scale;
     final double adaptiveSecondsPerRow =
         (viewportWidth / scaledPixelsPerSecond).floor().toDouble();
@@ -661,100 +706,95 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
         adaptiveSecondsPerRow > config.minSecondsPerRow
             ? adaptiveSecondsPerRow
             : config.minSecondsPerRow;
-
     final delta = globalPosition - state.dragStartPosition!;
     final double pixelsPerSecond = viewportWidth / secondsPerRowScaled;
     final double timeDelta = delta.dx / pixelsPerSecond;
 
-    // ----- Find the clip being dragged based on the stored ID -----
-    Clip? currentClip;
-    int? trackIndex = state.dragStartTrackIndex;
-    final tracks = _ref.read(tracksProvider);
+    // Calculate the raw target start time based on drag delta
+    double rawNewStartTime = state.dragStartTime! + timeDelta;
+    double finalNewStartTime; // Initialize final time
 
-    if (trackIndex != null && trackIndex < tracks.length) {
-      final targetTrack = tracks[trackIndex];
-      try {
-        // Find the clip using its unique ID
-        currentClip =
-            targetTrack.clips.firstWhere((c) => c.id == state.draggingClipId);
-      } catch (e) {
-        // Could happen if the clip was somehow removed between drag updates
-        print(
-            "Error: Clip with ID ${state.draggingClipId} not found in track $trackIndex. Aborting update.");
-        // Optionally try a global search, but ID should be reliable
-        // If not found, currentClip remains null
+    // Apply snapping if enabled
+    if (isSnappingEnabled) {
+      final double secondsPerBeat = timeUtils.secondsPerBeat;
+      if (secondsPerBeat > 0) {
+        // Avoid division by zero if BPM is 0
+
+        // --- Snap Back to Origin Logic FIRST ---
+        // Define a tolerance (e.g., 1/4 of a beat)
+        final double snapBackToleranceSeconds = secondsPerBeat * 0.25;
+
+        // Check if the raw target position is within tolerance of the *original* start time
+        if ((rawNewStartTime - state.dragStartTime!).abs() <=
+            snapBackToleranceSeconds) {
+          // If close enough, snap back to the exact original start time
+          finalNewStartTime = state.dragStartTime!;
+          if (_kDebugDragging) {
+            print(
+                "Snapping Back to Origin: rawTarget=$rawNewStartTime, original=${state.dragStartTime!} within tolerance=$snapBackToleranceSeconds");
+          }
+        } else {
+          // --- Apply Normal Snapping ---
+          // Calculate the nearest beat time point based on the raw target time
+          final int nearestBeatIndex =
+              (rawNewStartTime / secondsPerBeat).round();
+          final double snappedTime = nearestBeatIndex * secondsPerBeat;
+          finalNewStartTime = snappedTime; // Use the calculated snapped time
+          if (_kDebugDragging) {
+            print(
+                "Snapping Active: rawTarget=$rawNewStartTime, beat=$secondsPerBeat, index=$nearestBeatIndex, snapped=$snappedTime");
+          }
+        }
+        // --- End Snap Logic ---
+      } else {
+        // Snapping enabled but secondsPerBeat is 0, act as if snapping is off
+        finalNewStartTime = rawNewStartTime;
       }
     } else {
-      print(
-          "Error: Invalid dragStartTrackIndex ${state.dragStartTrackIndex}. Aborting update.");
+      // Snapping is disabled, use the raw delta
+      finalNewStartTime = rawNewStartTime;
     }
+    // --- End Snapping Calculation ---
 
-    // 如果找不到 Clip，则停止处理
-    if (currentClip == null) {
-      // No need to print again, error handled above
-      return; // Abort the update
-    }
-    // ----- End finding clip -----
-
-    // --- Calculate new position (logic mostly unchanged) ---
+    // --- Calculate Vertical Offset and Boundaries (Use finalNewStartTime) ---
     final double rowHeight = _calculateRowHeight();
     final double rowDelta = delta.dy / rowHeight;
     int rowOffset = rowDelta.round();
-
-    final int currentRow = (state.dragStartTime! / secondsPerRowScaled).floor();
+    final int currentRow = (state.dragStartTime! / secondsPerRowScaled)
+        .floor(); // Base row offset on original start
     final int totalRows = (config.totalSeconds / secondsPerRowScaled).ceil();
     final int lastRow = totalRows - 1;
-
     if (currentRow + rowOffset < 0)
       rowOffset = -currentRow;
     else if (currentRow + rowOffset > lastRow) rowOffset = lastRow - currentRow;
 
-    double newStartTime = state.dragStartTime! + timeDelta;
+    // Apply row offset to the (potentially snapped) time
+    if (rowOffset != 0) {
+      finalNewStartTime += (rowOffset * secondsPerRowScaled);
+    }
+
+    // Final boundary checks using the potentially snapped and row-offset time
     final double maxAllowedStartTime =
         config.totalSeconds - currentClip.duration;
+    finalNewStartTime =
+        Math.max(0, Math.min(maxAllowedStartTime, finalNewStartTime));
 
-    // Boundary checks (keep previous logic for now)
-    if (newStartTime > maxAllowedStartTime * 0.95) {
-      if (rowOffset > 0 && currentRow + rowOffset >= lastRow) {
-        final double lastRowStartTime = lastRow * secondsPerRowScaled;
-        final double maxOffsetInLastRow =
-            maxAllowedStartTime - lastRowStartTime;
-        if (maxOffsetInLastRow > 0) {
-          newStartTime = lastRowStartTime +
-              Math.min(maxOffsetInLastRow * 0.9, secondsPerRowScaled * 0.5);
-        } else {
-          newStartTime = Math.max(0, maxAllowedStartTime - 0.1);
-        }
-        rowOffset = 0;
-      }
-    }
-    if (rowOffset != 0) {
-      double potentialNewTime =
-          newStartTime + (rowOffset * secondsPerRowScaled);
-      if (potentialNewTime < 0 || potentialNewTime > maxAllowedStartTime) {
-        rowOffset = 0;
-      } else {
-        newStartTime = potentialNewTime;
-      }
-    }
-    newStartTime = Math.max(0, Math.min(maxAllowedStartTime, newStartTime));
-    final int newRow = (newStartTime / secondsPerRowScaled).floor();
-    if (currentRow == lastRow && newRow < lastRow - 1)
-      newStartTime = (lastRow - 1) * secondsPerRowScaled + 0.1;
-    else if (newRow > lastRow)
-      newStartTime = lastRow * secondsPerRowScaled + 0.1;
-    // --- End calculating new position ---
+    // Apply final anti-jump logic if needed (optional, might interfere with snapping)
+    // final int newRow = (finalNewStartTime / secondsPerRowScaled).floor();
+    // if (currentRow == lastRow && newRow < lastRow - 1) finalNewStartTime = (lastRow - 1) * secondsPerRowScaled + 0.1;
+    // else if (newRow > lastRow) finalNewStartTime = lastRow * secondsPerRowScaled + 0.1;
+    // --- End Boundary Checks ---
 
-    // 使用找到的 Clip 引用和新时间更新位置
-    // Pass the ID to updateClipPosition for reliable finding there too
-    tracksNotifier.updateClipPositionById(state.draggingClipId!, newStartTime);
+    // Update position using the final calculated time
+    tracksNotifier.updateClipPositionById(
+        state.draggingClipId!, finalNewStartTime);
 
-    // Update dragging state (no need to update draggingClip reference anymore)
+    // Update dragging state
     state = state.copyWith(currentDragPosition: globalPosition);
 
-    // Ensure visible scroll logic (remains the same)
-    if (_shouldEnsureVisible(newStartTime)) {
-      _ensureVisibleWhenDragging(newStartTime);
+    // Ensure visible scroll logic
+    if (_shouldEnsureVisible(finalNewStartTime)) {
+      _ensureVisibleWhenDragging(finalNewStartTime);
     }
   }
 
