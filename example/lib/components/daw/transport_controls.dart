@@ -122,11 +122,11 @@ class TransportControls extends ConsumerWidget {
                     children: [
                       // 磁吸按钮
                       Consumer(builder: (context, ref, child) {
-                        final isSnapping = ref.watch(snappingProvider);
+                        final snappingState = ref.watch(snappingProvider);
                         return IconButton(
                           icon: Icon(
                             Icons.auto_fix_high,
-                            color: isSnapping
+                            color: snappingState.isEnabled
                                 ? Theme.of(context).colorScheme.primary
                                 : Colors.grey[600],
                             size: 20,
@@ -134,9 +134,9 @@ class TransportControls extends ConsumerWidget {
                           padding: EdgeInsets.zero,
                           constraints:
                               const BoxConstraints(minWidth: 36, minHeight: 36),
-                          tooltip: '切换节拍吸附 (${isSnapping ? "开" : "关"})',
-                          onPressed: () =>
-                              ref.read(snappingProvider.notifier).toggle(),
+                          tooltip:
+                              '节拍吸附设置 (${snappingState.isEnabled ? snappingState.mode.displayName : "关"})',
+                          onPressed: () => _showSnappingOptions(context, ref),
                         );
                       }),
                       const SizedBox(width: 4),
@@ -214,5 +214,88 @@ class TransportControls extends ConsumerWidget {
   void _togglePlay(WidgetRef ref) {
     final playbackNotifier = ref.read(playbackProvider.notifier);
     playbackNotifier.togglePlay();
+  }
+
+  // 显示吸附选项菜单
+  void _showSnappingOptions(BuildContext context, WidgetRef ref) {
+    final snappingNotifier = ref.read(snappingProvider.notifier);
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Consumer(builder: (context, ref, child) {
+          final snappingState = ref.watch(snappingProvider);
+
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                  child: Text(
+                    '节拍吸附设置',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                // 总开关
+                SwitchListTile(
+                  title: const Text('启用吸附'),
+                  value: snappingState.isEnabled,
+                  onChanged: (bool value) {
+                    snappingNotifier.toggleEnabled();
+                    // Optionally close the sheet immediately after toggling enabled state
+                    // Navigator.pop(context);
+                  },
+                  dense: true,
+                ),
+                const Divider(),
+                // 吸附精度选项
+                ...SnappingMode.values
+                    .where((mode) =>
+                        mode !=
+                        SnappingMode.off) // Exclude 'off' from radio options
+                    .map((mode) {
+                  return RadioListTile<SnappingMode>(
+                    title: Text(mode.displayName),
+                    value: mode,
+                    groupValue: snappingState.isEnabled
+                        ? snappingState.mode
+                        : null, // Only show selection if enabled
+                    onChanged: snappingState.isEnabled
+                        ? (SnappingMode? value) {
+                            if (value != null) {
+                              snappingNotifier.setMode(value);
+                              Navigator.pop(
+                                  context); // Close sheet after selection
+                            }
+                          }
+                        : null, // Disable options if snapping is off
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.trailing,
+                  );
+                }).toList(),
+                // 添加一个明确的"关闭"选项
+                ListTile(
+                  leading: Icon(Icons.close,
+                      color: !snappingState.isEnabled
+                          ? Theme.of(context).colorScheme.primary
+                          : null),
+                  title: const Text('关闭吸附'),
+                  onTap: () {
+                    snappingNotifier.setMode(
+                        SnappingMode.off); // Setting mode to off also disables
+                    Navigator.pop(context);
+                  },
+                  dense: true,
+                  selected: !snappingState.isEnabled,
+                ),
+              ],
+            ),
+          );
+        });
+      },
+    );
   }
 }

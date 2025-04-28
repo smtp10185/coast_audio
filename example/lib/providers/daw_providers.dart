@@ -10,16 +10,93 @@ import 'dart:math' as Math;
 const bool _kDebugDragging = false; // Set to true to enable dragging logs
 // ---------------------
 
-// --- Snapping State ---
-class SnappingNotifier extends StateNotifier<bool> {
-  SnappingNotifier() : super(false); // Snapping defaults to off
+// --- Snapping Mode Enum ---
+enum SnappingMode {
+  off('关闭'),
+  bar('小节'),
+  beat('节拍'), // Typically 1/4 note
+  halfBeat('半拍'), // Typically 1/8 note
+  quarterBeat('1/4拍'); // Typically 1/16 note
 
-  void toggle() {
-    state = !state;
-  }
+  const SnappingMode(this.displayName);
+  final String displayName;
 }
 
-final snappingProvider = StateNotifierProvider<SnappingNotifier, bool>((ref) {
+// --- Snapping State ---
+class SnappingState {
+  final bool isEnabled;
+  final SnappingMode mode;
+
+  const SnappingState(
+      {this.isEnabled = false,
+      this.mode = SnappingMode
+          .beat}); // Default to beat snapping, but disabled initially
+
+  SnappingState copyWith({bool? isEnabled, SnappingMode? mode}) {
+    return SnappingState(
+      isEnabled: isEnabled ?? this.isEnabled,
+      mode: mode ?? this.mode,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SnappingState &&
+          runtimeType == other.runtimeType &&
+          isEnabled == other.isEnabled &&
+          mode == other.mode;
+
+  @override
+  int get hashCode => isEnabled.hashCode ^ mode.hashCode;
+}
+
+// --- Snapping Notifier ---
+class SnappingNotifier extends StateNotifier<SnappingState> {
+  SnappingNotifier() : super(const SnappingState()) {
+    print(
+        "SnappingNotifier initialized. Initial state: ${state.isEnabled}, Mode: ${state.mode.displayName}");
+  }
+
+  // Toggles the enabled state, keeping the current mode
+  void toggleEnabled() {
+    final oldState = state;
+    state = state.copyWith(isEnabled: !state.isEnabled);
+    print(
+        "Snapping toggled. Old state: ${oldState.isEnabled}, New state: ${state.isEnabled}, Mode: ${state.mode.displayName}");
+  }
+
+  // Sets a specific snapping mode
+  void setMode(SnappingMode newMode) {
+    final oldState = state;
+    // If setting to 'off', disable snapping. Otherwise, enable it and set the mode.
+    if (newMode == SnappingMode.off) {
+      state = state.copyWith(
+          isEnabled: false,
+          mode: newMode); // Keep mode as 'off' for consistency
+    } else {
+      state = state.copyWith(isEnabled: true, mode: newMode);
+    }
+    print(
+        "Snapping mode set. Old state: ${oldState.isEnabled}/${oldState.mode.displayName}, New state: ${state.isEnabled}/${state.mode.displayName}");
+  }
+
+  // You might still want a simple toggle for quick on/off switching
+  // keeping the last selected mode.
+  // void toggle() {
+  //   if (state.mode == SnappingMode.off) {
+  //     // If currently off, turn on with the default or last used 'active' mode (e.g., beat)
+  //     state = state.copyWith(isEnabled: true, mode: SnappingMode.beat); // Or restore a saved 'lastMode'
+  //   } else {
+  //     // If currently on, turn off but remember the mode
+  //     state = state.copyWith(isEnabled: false);
+  //   }
+  // }
+}
+
+// --- Snapping Provider ---
+final snappingProvider =
+    StateNotifierProvider<SnappingNotifier, SnappingState>((ref) {
   return SnappingNotifier();
 });
 // ---------------------
@@ -205,11 +282,7 @@ class TracksNotifier extends StateNotifier<List<Track>> {
             type: c.type,
             chordValue: c.chordValue, // 确保 chordValue 被复制过来
           );
-          // Only print if the debug flag is true
-          if (_kDebugDragging) {
-            print(
-                'Updating clip: ${c.toString()} -> ${updatedClip.toString()}'); // Debugging
-          }
+          // print('Updating clip: ${c.toString()} -> ${updatedClip.toString()}'); // Debugging - Use if needed
           return updatedClip;
         }
         return c;
@@ -671,7 +744,8 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
     final tracksNotifier = _ref.read(tracksProvider.notifier);
     final viewportWidth = _ref.read(viewportWidthProvider);
     final timeUtils = _ref.read(timeUtilsProvider); // Get TimeUtils
-    final isSnappingEnabled = _ref.read(snappingProvider); // Get snapping state
+    final snappingState =
+        _ref.read(snappingProvider); // Get snapping state object
 
     // Find the clip using its unique ID
     Clip? currentClip;
@@ -715,37 +789,65 @@ class DraggingNotifier extends StateNotifier<DraggingState> {
     double finalNewStartTime; // Initialize final time
 
     // Apply snapping if enabled
-    if (isSnappingEnabled) {
+    if (snappingState.isEnabled) {
       final double secondsPerBeat = timeUtils.secondsPerBeat;
       if (secondsPerBeat > 0) {
-        // Avoid division by zero if BPM is 0
-
-        // --- Snap Back to Origin Logic FIRST ---
-        // Define a tolerance (e.g., 1/4 of a beat)
-        final double snapBackToleranceSeconds = secondsPerBeat * 0.25;
-
-        // Check if the raw target position is within tolerance of the *original* start time
-        if ((rawNewStartTime - state.dragStartTime!).abs() <=
-            snapBackToleranceSeconds) {
-          // If close enough, snap back to the exact original start time
-          finalNewStartTime = state.dragStartTime!;
-          if (_kDebugDragging) {
-            print(
-                "Snapping Back to Origin: rawTarget=$rawNewStartTime, original=${state.dragStartTime!} within tolerance=$snapBackToleranceSeconds");
-          }
-        } else {
-          // --- Apply Normal Snapping ---
-          // Calculate the nearest beat time point based on the raw target time
-          final int nearestBeatIndex =
-              (rawNewStartTime / secondsPerBeat).round();
-          final double snappedTime = nearestBeatIndex * secondsPerBeat;
-          finalNewStartTime = snappedTime; // Use the calculated snapped time
-          if (_kDebugDragging) {
-            print(
-                "Snapping Active: rawTarget=$rawNewStartTime, beat=$secondsPerBeat, index=$nearestBeatIndex, snapped=$snappedTime");
-          }
+        // Determine the snapping interval based on the current mode
+        double snappingIntervalSeconds;
+        switch (snappingState.mode) {
+          case SnappingMode.bar:
+            snappingIntervalSeconds = timeUtils.secondsPerBar;
+            break;
+          case SnappingMode.beat:
+            snappingIntervalSeconds = secondsPerBeat;
+            break;
+          case SnappingMode.halfBeat:
+            snappingIntervalSeconds = secondsPerBeat / 2.0;
+            break;
+          case SnappingMode.quarterBeat:
+            snappingIntervalSeconds = secondsPerBeat / 4.0;
+            break;
+          case SnappingMode.off:
+            // Should not happen if isEnabled is true, but handle defensively
+            snappingIntervalSeconds = 0;
+            break;
         }
-        // --- End Snap Logic ---
+
+        // Proceed only if a valid snapping interval is determined
+        if (snappingIntervalSeconds > 0) {
+          // --- Snap Back to Origin Logic FIRST ---
+          // Define a tolerance (e.g., 1/4 of the *current* snapping interval)
+          final double snapBackToleranceSeconds =
+              snappingIntervalSeconds * 0.25;
+
+          // Check if the raw target position is within tolerance of the *original* start time
+          if ((rawNewStartTime - state.dragStartTime!).abs() <=
+              snapBackToleranceSeconds) {
+            // If close enough, snap back to the exact original start time
+            finalNewStartTime = state.dragStartTime!;
+            if (_kDebugDragging) {
+              print(
+                  "Snapping Back to Origin (Mode: ${snappingState.mode.displayName}): raw=$rawNewStartTime, original=${state.dragStartTime!} within tolerance=$snapBackToleranceSeconds");
+            }
+          } else {
+            // --- Apply Normal Snapping based on calculated interval ---
+            // Calculate the nearest snap point index
+            final int nearestSnapPointIndex =
+                (rawNewStartTime / snappingIntervalSeconds).round();
+            // Calculate the snapped time
+            final double snappedTime =
+                nearestSnapPointIndex * snappingIntervalSeconds;
+            finalNewStartTime = snappedTime; // Use the calculated snapped time
+            if (_kDebugDragging) {
+              print(
+                  "Snapping Active (Mode: ${snappingState.mode.displayName}, Interval: ${snappingIntervalSeconds.toStringAsFixed(3)}s): raw=$rawNewStartTime, index=$nearestSnapPointIndex, snapped=$snappedTime");
+            }
+          }
+          // --- End Snap Logic ---
+        } else {
+          // Invalid interval (e.g., SnappingMode.off was somehow selected, or BPM=0)
+          finalNewStartTime = rawNewStartTime;
+        }
       } else {
         // Snapping enabled but secondsPerBeat is 0, act as if snapping is off
         finalNewStartTime = rawNewStartTime;
