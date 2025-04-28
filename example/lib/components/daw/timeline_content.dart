@@ -2,16 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/daw_providers.dart';
 import 'dart:math' as Math;
+import '../../utils/time_utils.dart';
 import 'timeline_ruler.dart';
 import 'track_item.dart';
 import 'playhead.dart';
 
 /// 时间线内容 - 显示时间轴和轨道内容的主要区域
-class TimelineContent extends ConsumerWidget {
+class TimelineContent extends ConsumerStatefulWidget {
   const TimelineContent({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TimelineContent> createState() => _TimelineContentState();
+}
+
+class _TimelineContentState extends ConsumerState<TimelineContent> {
+  final GlobalKey _timelineAreaKey = GlobalKey(); // Key to get RenderBox info
+  double? _dragStartTime; // Store original time for snap-back during drag
+
+  @override
+  Widget build(BuildContext context) {
     final config = ref.watch(dawConfigProvider);
     final tracks = ref.watch(tracksProvider);
     final playbackState = ref.watch(playbackProvider);
@@ -58,8 +67,15 @@ class TimelineContent extends ConsumerWidget {
       draggingState.dragStartTrackIndex,
     );
 
+    // 获取 TimelineContent 区域的 RenderBox，用于计算全局坐标
+    RenderBox? timelineRenderBox =
+        _timelineAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    Offset timelineOffset =
+        timelineRenderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+
     // 构建时间线滚动视图内容
     return Stack(
+      key: _timelineAreaKey, // Assign key to the Stack
       children: [
         // 滚动视图
         NotificationListener<ScrollNotification>(
@@ -88,57 +104,74 @@ class TimelineContent extends ConsumerWidget {
           },
           child: SingleChildScrollView(
             controller: scrollController,
-            child: SizedBox(
-              height: rowHeight * rowCount,
-              child: Stack(
-                children: [
-                  // 生成所有行
-                  Column(
-                    children: List.generate(rowCount, (rowIndex) {
-                      // 计算当前行的时间范围
-                      final double rowStartTime =
-                          rowIndex * secondsPerRowScaled;
-                      final double rowEndTime =
-                          rowStartTime + secondsPerRowScaled;
-
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 时间轴标尺
-                          Stack(
-                            children: [
-                              TimelineRuler(
-                                rowStartTime: rowStartTime,
-                                rowEndTime: rowEndTime,
-                                rowIndex: rowIndex,
-                                rowCount: rowCount,
-                                viewportWidth: viewportWidth,
-                              ),
-                            ],
-                          ),
-
-                          // 轨道内容 - 移除左侧的轨道名称，只显示内容部分
-                          _buildTracks(
-                            ref,
-                            rowStartTime: rowStartTime,
-                            rowEndTime: rowEndTime,
-                            viewportWidth: viewportWidth,
-                          ),
-
-                          // 行间距
-                          SizedBox(height: config.rowSpacing),
-                        ],
-                      );
-                    }),
-                  ),
-
-                  // 播放指针
-                  Playhead(
-                    viewportWidth: viewportWidth,
-                    secondsPerRowScaled: secondsPerRowScaled,
-                  ),
-                ],
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapDown: (details) {
+                _handlePlayheadPositionUpdate(details.globalPosition,
+                    isDragging: false);
+              },
+              onPanStart: (details) {
+                _dragStartTime = ref.read(playbackProvider).position;
+                _handlePlayheadPositionUpdate(details.globalPosition,
+                    isDragging: true);
+                print("Global pan start: Time=$_dragStartTime");
+              },
+              onPanUpdate: (details) {
+                _handlePlayheadPositionUpdate(details.globalPosition,
+                    isDragging: true);
+              },
+              onPanEnd: (details) {
+                print(
+                    "Global pan end: Final Time=${ref.read(playbackProvider).position}");
+                _dragStartTime = null;
+              },
+              child: SizedBox(
+                height: rowHeight * rowCount,
+                child: Stack(
+                  children: [
+                    // 生成所有行
+                    Column(
+                      children: List.generate(rowCount, (rowIndex) {
+                        final double rowStartTime =
+                            rowIndex * secondsPerRowScaled;
+                        final double rowEndTime =
+                            rowStartTime + secondsPerRowScaled;
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 时间轴标尺
+                            Stack(
+                              children: [
+                                TimelineRuler(
+                                  rowStartTime: rowStartTime,
+                                  rowEndTime: rowEndTime,
+                                  rowIndex: rowIndex,
+                                  rowCount: rowCount,
+                                  viewportWidth: viewportWidth,
+                                ),
+                              ],
+                            ),
+                            // 轨道内容
+                            _buildTracks(
+                              ref,
+                              rowStartTime: rowStartTime,
+                              rowEndTime: rowEndTime,
+                              viewportWidth: viewportWidth,
+                            ),
+                            // 行间距
+                            SizedBox(height: config.rowSpacing),
+                          ],
+                        );
+                      }),
+                    ),
+                    // 播放指针
+                    Playhead(
+                      viewportWidth: viewportWidth,
+                      secondsPerRowScaled: secondsPerRowScaled,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -235,5 +268,148 @@ class TimelineContent extends ConsumerWidget {
           (visibleTrackCount * config.trackHeight) +
           config.rowSpacing;
     }
+  }
+
+  // Helper function to handle both tap and drag updates for playhead position
+  void _handlePlayheadPositionUpdate(Offset globalPosition,
+      {required bool isDragging}) {
+    final config = ref.read(dawConfigProvider);
+    final zoomState = ref.read(zoomProvider);
+    final snappingState = ref.read(snappingProvider);
+    final timeUtils = ref.read(timeUtilsProvider);
+    final viewportWidth = ref.read(viewportWidthProvider);
+    final scrollController = ref.read(scrollControllerProvider);
+    final playbackNotifier = ref.read(playbackProvider.notifier);
+    final tracks = ref.read(tracksProvider);
+    final draggingState = ref.read(draggingStateProvider);
+
+    // Get RenderBox info again (might have changed)
+    RenderBox? timelineRenderBox =
+        _timelineAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    if (timelineRenderBox == null || viewportWidth <= 0)
+      return; // Need context and width
+    Offset timelineOffset = timelineRenderBox.localToGlobal(Offset.zero);
+
+    // Calculate scaled pixels per second and seconds per row
+    final double scaledPixelsPerSecond =
+        config.pixelsPerSecond * zoomState.scale;
+    final double adaptiveSecondsPerRow =
+        (viewportWidth / scaledPixelsPerSecond).floor().toDouble();
+    final double secondsPerRowScaled =
+        adaptiveSecondsPerRow > config.minSecondsPerRow
+            ? adaptiveSecondsPerRow
+            : config.minSecondsPerRow;
+
+    // Calculate row height (needs to be consistent)
+    final int visibleTrackCount =
+        tracks.where((track) => track.isVisible).length;
+    // Note: Use the _calculateVisibleRowHeight from this class, not Playhead's
+    final double rowHeight = _calculateVisibleRowHeight(
+        config,
+        visibleTrackCount,
+        draggingState.isDragging,
+        draggingState.dragStartTrackIndex);
+    if (rowHeight <= 0) return; // Avoid division by zero
+
+    // Calculate vertical position within the scrollable content
+    final double contentY =
+        globalPosition.dy - timelineOffset.dy + scrollController.offset;
+
+    // Calculate the target row index
+    int targetRowIndex = (contentY / rowHeight).floor();
+    // Clamp row index
+    // final int maxRowIndex = (config.totalSeconds / secondsPerRowScaled).ceil();
+    // targetRowIndex = targetRowIndex.clamp(0, maxRowIndex);
+
+    // Calculate horizontal position within the viewport
+    final double contentX = globalPosition.dx - timelineOffset.dx;
+
+    // Calculate time within that row
+    final double timeInRow = (contentX / viewportWidth) * secondsPerRowScaled;
+
+    // Calculate the target row's start time
+    final double targetRowStartTime = targetRowIndex * secondsPerRowScaled;
+
+    // Calculate raw target time
+    double rawTargetTime = targetRowStartTime + timeInRow;
+
+    // Apply snapping
+    double finalTargetTime = _applyGlobalSnapping(
+      rawTargetTime,
+      isDragging ? _dragStartTime : null, // Pass original time only for drag
+      snappingState,
+      timeUtils,
+    );
+
+    // Clamp final time
+    finalTargetTime = finalTargetTime.clamp(0.0, config.totalSeconds);
+
+    // --- Update Playback Position ---
+    // Only seek if the time actually changed (avoid redundant seeks)
+    if ((finalTargetTime - ref.read(playbackProvider).position).abs() > 0.001) {
+      playbackNotifier.seekTo(finalTargetTime);
+    }
+
+    // Disable auto-scroll on tap or drag start
+    if (!isDragging || _dragStartTime != null) {
+      // Apply on tap or first drag update
+      playbackNotifier.setAutoScroll(true); // Disable
+    }
+
+    // Debug print (optional)
+    // print("Handle Update: Global=(${globalPosition.dx.toStringAsFixed(1)}, ${globalPosition.dy.toStringAsFixed(1)}) Offset=${scrollController.offset.toStringAsFixed(1)} -> Row=$targetRowIndex, X=$contentX -> RawT=${rawTargetTime.toStringAsFixed(3)}, FinalT=${finalTargetTime.toStringAsFixed(3)}");
+  }
+
+  // Helper function for global snapping logic
+  double _applyGlobalSnapping(
+    double rawTime,
+    double? originalTime, // Nullable, only used for drag snap-back
+    SnappingState snappingState,
+    TimeUtils timeUtils, // Explicitly use the TimeUtils class type
+  ) {
+    if (!snappingState.isEnabled) {
+      return rawTime; // Snapping disabled
+    }
+
+    final double secondsPerBeat = timeUtils.secondsPerBeat;
+    if (secondsPerBeat <= 0) {
+      return rawTime; // Invalid BPM or settings
+    }
+
+    double snappingIntervalSeconds;
+    switch (snappingState.mode) {
+      case SnappingMode.bar:
+        snappingIntervalSeconds = timeUtils.secondsPerBar;
+        break;
+      case SnappingMode.beat:
+        snappingIntervalSeconds = secondsPerBeat;
+        break;
+      case SnappingMode.halfBeat:
+        snappingIntervalSeconds = secondsPerBeat / 2.0;
+        break;
+      case SnappingMode.quarterBeat:
+        snappingIntervalSeconds = secondsPerBeat / 4.0;
+        break;
+      case SnappingMode.off:
+        return rawTime;
+    }
+
+    if (snappingIntervalSeconds <= 0) {
+      return rawTime; // Invalid interval
+    }
+
+    // Snap Back to Origin Logic (Only during drag)
+    if (originalTime != null) {
+      final double snapBackToleranceSeconds = snappingIntervalSeconds * 0.25;
+      if ((rawTime - originalTime).abs() <= snapBackToleranceSeconds) {
+        return originalTime;
+      }
+    }
+
+    // Normal Snapping
+    final int nearestSnapPointIndex =
+        (rawTime / snappingIntervalSeconds).round();
+    final double snappedTime = nearestSnapPointIndex * snappingIntervalSeconds;
+    return snappedTime;
   }
 }

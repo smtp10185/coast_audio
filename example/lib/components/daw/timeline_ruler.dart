@@ -70,6 +70,7 @@ class TimelineRuler extends ConsumerWidget {
     // 分隔线数量 - 保证足够的分辨率
     int divisionCount = Math.max((rowDuration / secondsPerBeat).round(), 8);
 
+    // Remove GestureDetector, interaction handled by parent
     return SizedBox(
       height: config.timelineHeight,
       width: viewportWidth,
