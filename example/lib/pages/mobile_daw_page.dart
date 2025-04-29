@@ -209,27 +209,32 @@ class MobileDawPage extends ConsumerWidget {
     // Show the ChordArrangeView in a Modal Bottom Sheet
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Allows the sheet to take up more height
-      backgroundColor: Colors.transparent, // Make sheet background transparent
-      // elevation: 0, // Optional: remove shadow if needed
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.transparent, // Remove the background scrim
+      // elevation: 0, // Keep or adjust elevation as needed
       builder: (context) {
         // Wrap ChordArrangeView in a container for background and shape
         return Container(
-          margin: const EdgeInsets.only(top: 40), // Add margin from top
+          // Remove horizontal margin to allow full width if needed
+          // margin: const EdgeInsets.only(top: 40), // Keep vertical margin
+          margin: const EdgeInsets.only(
+              top: 40), // Let's keep vertical margin for now
           decoration: BoxDecoration(
-            color: Colors.grey[100], // Example background color
+            color: Colors.grey[100],
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 10,
-                spreadRadius: 2,
+                color: Colors.black.withOpacity(0.15), // Slightly reduce shadow
+                blurRadius: 8,
+                spreadRadius: 1,
               )
-            ], // Add shadow for better separation
+            ],
           ),
-          // Constrain the height - adjust as needed
+          // Let height be constrained, width should fill by default
           height: MediaQuery.of(context).size.height * 0.8,
-          child: const ChordArrangeView(), // Your main content
+          width: double.infinity, // Explicitly set width to infinity
+          child: const ChordArrangeView(),
         );
       },
     );
