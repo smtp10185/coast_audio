@@ -7,6 +7,8 @@ import '../components/daw/timeline_content.dart';
 import '../components/daw/zoom_controls.dart';
 import '../components/daw/global_drag_listener.dart';
 import '../models/track.dart';
+import '../models/clip.dart';
+import '../components/daw/chord_arrange_view.dart';
 
 class MobileDawPage extends ConsumerWidget {
   const MobileDawPage({super.key});
@@ -123,14 +125,19 @@ class MobileDawPage extends ConsumerWidget {
     // 获取当前播放位置作为和弦标记的起始点
     final playbackState = ref.read(playbackProvider);
     final startTime = playbackState.position;
+    final chordNameController = TextEditingController();
 
-    // 这里可以显示和弦选择对话框
+    // 显示和弦输入对话框
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('添加和弦标记'),
-          content: const Text('在这里会显示和弦选择器，目前仅作示例'),
+          content: TextField(
+            controller: chordNameController,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: '输入和弦名称 (例如 Cmaj7)'),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -138,10 +145,45 @@ class MobileDawPage extends ConsumerWidget {
             ),
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已添加和弦标记 (示例)')),
-                );
+                final chordName = chordNameController.text.trim();
+                if (chordName.isNotEmpty) {
+                  // 查找和弦轨道 (假设在索引 0)
+                  // TODO: 更健壮的方式是查找 type == TrackType.chord 的轨道
+                  const chordTrackIndex = 0;
+
+                  // 创建新的 Chord Clip
+                  final newChordClip = Clip(
+                    name: chordName, // Use chord name as clip name too
+                    startTime: startTime,
+                    duration: 0.1, // Short duration for marker style
+                    color: Colors.purple,
+                    type: ClipType.chord,
+                    chordValue: chordName,
+                  );
+
+                  // 添加 Clip 到 Provider
+                  try {
+                    ref
+                        .read(tracksProvider.notifier)
+                        .addClipToTrack(chordTrackIndex, newChordClip);
+
+                    Navigator.pop(context); // Close dialog
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text(
+                              '已在 ${startTime.toStringAsFixed(2)}s 添加和弦: $chordName')),
+                    );
+                  } catch (e) {
+                    Navigator.pop(context); // Close dialog
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('添加和弦失败: $e')),
+                    );
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请输入有效的和弦名称')),
+                  );
+                }
               },
               child: const Text('添加'),
             ),
@@ -153,36 +195,67 @@ class MobileDawPage extends ConsumerWidget {
 
   // 编辑和弦进行的方法
   void _editChordProgression(BuildContext context, WidgetRef ref) {
-    // 这里可以导航到和弦编辑页面
-    showDialog(
+    // --- Debug Print: Check tracks state BEFORE opening the sheet ---
+    final currentTracks = ref.read(tracksProvider);
+    final hasChordTrackBeforeOpening =
+        currentTracks.any((t) => t.type == TrackType.chord);
+    print("[_editChordProgression] Checking tracks before opening sheet...");
+    print(
+        "[_editChordProgression] Has Chord Track? $hasChordTrackBeforeOpening");
+    print(
+        "[_editChordProgression] Current Tracks: ${currentTracks.map((t) => '${t.name}(${t.type.name})').join(', ')}");
+    // --- End Debug Print ---
+
+    // Show the ChordArrangeView in a Modal Bottom Sheet
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true, // Allows the sheet to take up more height
+      backgroundColor: Colors.transparent, // Make sheet background transparent
+      // elevation: 0, // Optional: remove shadow if needed
       builder: (context) {
-        return AlertDialog(
-          title: const Text('和弦进行编辑器'),
-          content: Container(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('这里将显示和弦进行编辑器界面'),
-                const SizedBox(height: 20),
-                const Icon(
-                  Icons.piano,
-                  size: 80,
-                  color: Colors.purple,
-                ),
-              ],
-            ),
+        // Wrap ChordArrangeView in a container for background and shape
+        return Container(
+          margin: const EdgeInsets.only(top: 40), // Add margin from top
+          decoration: BoxDecoration(
+            color: Colors.grey[100], // Example background color
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 10,
+                spreadRadius: 2,
+              )
+            ], // Add shadow for better separation
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
+          // Constrain the height - adjust as needed
+          height: MediaQuery.of(context).size.height * 0.8,
+          child: const ChordArrangeView(), // Your main content
         );
       },
     );
+
+    /* // Original Dialog code
+    showDialog(
+      context: context,
+      // Make the dialog wider to accommodate the arrange view
+      builder: (context) => const AlertDialog(
+          // Using AlertDialog for structure, but content is ChordArrangeView
+          contentPadding: EdgeInsets.zero, // Remove default padding
+          insetPadding:
+              EdgeInsets.symmetric(horizontal: 10, vertical: 24),
+          // Allow the dialog to determine its own size based on content
+          content: ChordArrangeView(),
+          // Optional: Add title or actions if needed
+          // title: Text('编辑和弦进行'),
+          // actions: [
+          //   TextButton(
+          //     onPressed: () => Navigator.pop(context),
+          //     child: const Text('关闭'),
+          //   ),
+          // ],
+          ),
+    );
+    */
   }
 
   // 切换和弦轨道可见性的方法

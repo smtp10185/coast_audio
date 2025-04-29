@@ -12,16 +12,19 @@ class TransportControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final playbackState = ref.watch(playbackProvider);
     final playbackNotifier = ref.read(playbackProvider.notifier);
-    final timeUtils = ref.watch(timeUtilsProvider);
+    final timeContext = ref.read(timeContextProvider.notifier);
 
     // 将秒数转换为小节信息
-    final barInfo = timeUtils.secondsToBarInfo(playbackState.position);
+    final musicalTime = timeContext.getMusicalTime(playbackState.position);
 
     // 创建时间码显示
     final String barTimeDisplay =
-        "${barInfo['bar']}.${barInfo['beat']}.${barInfo['ticks'].toString().padLeft(2, '0')}";
+        "${musicalTime.bar}.${musicalTime.beat}.${musicalTime.tick.toString().padLeft(2, '0')}";
     final String secondsDisplay = _formatTime(playbackState.position);
-    final String bpmDisplay = timeUtils.bpm.toStringAsFixed(1);
+    final String bpmDisplay = timeContext
+        .getTempoEventAt(playbackState.position)
+        .bpm
+        .toStringAsFixed(1);
 
     return Material(
       elevation: 4,

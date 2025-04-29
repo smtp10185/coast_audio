@@ -218,7 +218,13 @@ class TracksNotifier extends StateNotifier<List<Track>> {
             name: '轨道 3',
             clips: [],
           ),
-        ]);
+        ]) {
+    // Add a print statement here to verify initial state
+    print(
+        "TracksNotifier Initialized. Initial State contains chord track: ${state.isNotEmpty && state.first.type == TrackType.chord}");
+    print(
+        "Initial Tracks: ${state.map((t) => '${t.name}(${t.type.name})').join(', ')}");
+  }
 
   // 切换轨道可见性
   void toggleTrackVisibility(int index) {
@@ -393,6 +399,142 @@ class TracksNotifier extends StateNotifier<List<Track>> {
       print(
           'Updated clip by ID: ${originalClip.toString()} -> ${updatedClip.toString()}');
     }
+  }
+
+  // Update clip time and potentially track
+  void updateClip(int originalTrackIndex, Clip originalClip,
+      double newStartTime, double newDuration, int? newTrackIndexNullable) {
+    // ... (existing updateClip implementation) ...
+  }
+
+  // Add a new clip to a specific track
+  void addClipToTrack(int trackIndex, Clip newClip) {
+    if (trackIndex < 0 || trackIndex >= state.length) {
+      print("Error adding clip: Invalid track index $trackIndex");
+      return; // Or throw an exception
+    }
+
+    // Create a new list of tracks
+    final newState = List<Track>.from(state);
+    // Get the target track
+    final targetTrack = newState[trackIndex];
+    // Create a new list of clips for the target track, adding the new clip
+    final updatedClips = List<Clip>.from(targetTrack.clips)..add(newClip);
+
+    // Create a new Track object with the updated clips list
+    // Preserve other track properties
+    newState[trackIndex] = Track(
+      name: targetTrack.name,
+      clips: updatedClips,
+      type: targetTrack.type,
+      isVisible: targetTrack.isVisible,
+      isMuted: targetTrack.isMuted,
+      isSolo: targetTrack.isSolo,
+      volume: targetTrack.volume,
+      pan: targetTrack.pan,
+    );
+
+    // Update the state
+    state = newState;
+    print("Added clip ${newClip.name} to track $trackIndex");
+  }
+
+  // Update an existing clip within a specific track
+  void updateClipInTrack(
+    int trackIndex,
+    String clipId, {
+    String? newName,
+    double? newStartTime,
+    double? newDuration,
+    Color? newColor,
+    String? newChordValue,
+  }) {
+    if (trackIndex < 0 || trackIndex >= state.length) {
+      print("Error updating clip: Invalid track index $trackIndex");
+      return;
+    }
+
+    final newState = List<Track>.from(state);
+    final targetTrack = newState[trackIndex];
+    final clipIndex = targetTrack.clips.indexWhere((c) => c.id == clipId);
+
+    if (clipIndex == -1) {
+      print(
+          "Error updating clip: Clip with ID $clipId not found in track $trackIndex");
+      return;
+    }
+
+    final originalClip = targetTrack.clips[clipIndex];
+
+    // Create updated clip, preserving original values if new ones aren't provided
+    final updatedClip = Clip(
+      id: originalClip.id, // Keep the same ID
+      name: newName ?? originalClip.name,
+      startTime: newStartTime ?? originalClip.startTime,
+      duration: newDuration ?? originalClip.duration,
+      color: newColor ?? originalClip.color,
+      type: originalClip.type, // Type generally shouldn't change here
+      chordValue: newChordValue ?? originalClip.chordValue,
+    );
+
+    // Create updated clips list
+    final updatedClips = List<Clip>.from(targetTrack.clips);
+    updatedClips[clipIndex] = updatedClip;
+
+    // Create updated track
+    newState[trackIndex] = Track(
+      name: targetTrack.name,
+      clips: updatedClips,
+      type: targetTrack.type,
+      isVisible: targetTrack.isVisible,
+      isMuted: targetTrack.isMuted,
+      isSolo: targetTrack.isSolo,
+      volume: targetTrack.volume,
+      pan: targetTrack.pan,
+    );
+
+    state = newState;
+    print("Updated clip $clipId in track $trackIndex");
+  }
+
+  // Delete a clip from a specific track
+  void deleteClip(int trackIndex, String clipId) {
+    // ... (existing deleteClip implementation, if any) ...
+    // If deleteClip doesn't exist, it might need to be added similarly
+    if (trackIndex < 0 || trackIndex >= state.length) {
+      print("Error deleting clip: Invalid track index $trackIndex");
+      return;
+    }
+
+    final newState = List<Track>.from(state);
+    final targetTrack = newState[trackIndex];
+    final originalLength = targetTrack.clips.length;
+
+    // Create a new list excluding the clip to be deleted
+    final updatedClips =
+        targetTrack.clips.where((c) => c.id != clipId).toList();
+
+    // Check if a clip was actually removed
+    if (updatedClips.length == originalLength) {
+      print(
+          "Error deleting clip: Clip with ID $clipId not found in track $trackIndex");
+      return;
+    }
+
+    // Create updated track
+    newState[trackIndex] = Track(
+      name: targetTrack.name,
+      clips: updatedClips,
+      type: targetTrack.type,
+      isVisible: targetTrack.isVisible,
+      isMuted: targetTrack.isMuted,
+      isSolo: targetTrack.isSolo,
+      volume: targetTrack.volume,
+      pan: targetTrack.pan,
+    );
+
+    state = newState;
+    print("Deleted clip $clipId from track $trackIndex");
   }
 }
 

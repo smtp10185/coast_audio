@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/daw_providers.dart';
-import '../../utils/time_utils.dart';
+import '../../utils/time_utils.dart'; // Import TimeUtils, TimeContext, etc.
 import 'dart:math' as Math;
 
 /// 时间轴标尺 - 显示时间轴和小节标记
@@ -24,18 +24,18 @@ class TimelineRuler extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(dawConfigProvider);
-    final timeUtils = ref.watch(timeUtilsProvider);
+    final timeContext = ref.read(timeContextProvider.notifier);
 
     // 计算这一行显示多少秒
     final double rowDuration = rowEndTime - rowStartTime;
 
     // 获取小节信息
-    final startBarInfo = timeUtils.secondsToBarInfo(rowStartTime);
-    final endBarInfo = timeUtils.secondsToBarInfo(rowEndTime - 0.01); // 避免边界问题
+    final startBarInfo = timeContext.getMusicalTime(rowStartTime);
+    final endBarInfo = timeContext.getMusicalTime(rowEndTime - 0.01); // 避免边界问题
 
     // 计算这一行包含的小节数
-    final int startBar = startBarInfo['bar'];
-    final int endBar = endBarInfo['bar'];
+    final int startBar = startBarInfo.bar;
+    final int endBar = endBarInfo.bar;
     final int barCount = endBar - startBar + 1;
 
     // 根据视口宽度计算一个合理的分隔数
@@ -43,9 +43,12 @@ class TimelineRuler extends ConsumerWidget {
     final double minPixelsBetweenBars = 60.0; // 小节号之间的最小间距
 
     // 计算每小节平均像素宽度
-    final double secondsPerBeat = 60.0 / timeUtils.bpm;
-    final double secondsPerBar = secondsPerBeat * timeUtils.beatsPerBar;
-    final double pixelsPerBar = (secondsPerBar / rowDuration) * viewportWidth;
+    final double secondsPerBeatApprox =
+        timeContext.getSecondsPerBeatAt(rowStartTime);
+    final double secondsPerBarApprox =
+        timeContext.getSecondsPerBarAt(rowStartTime);
+    final double pixelsPerBar =
+        (secondsPerBarApprox / rowDuration) * viewportWidth;
 
     // 动态调整显示间隔 - 根据小节范围调整显示策略
     int barDisplayInterval = 1;
@@ -68,7 +71,9 @@ class TimelineRuler extends ConsumerWidget {
     }
 
     // 分隔线数量 - 保证足够的分辨率
-    int divisionCount = Math.max((rowDuration / secondsPerBeat).round(), 8);
+    int divisionCount = secondsPerBeatApprox <= 0
+        ? 8
+        : Math.max((rowDuration / secondsPerBeatApprox).round(), 8);
 
     // Remove GestureDetector, interaction handled by parent
     return SizedBox(
@@ -96,9 +101,9 @@ class TimelineRuler extends ConsumerWidget {
               if (time > rowEndTime) return const SizedBox();
 
               // 获取小节信息
-              final barInfo = timeUtils.secondsToBarInfo(time);
-              final int bar = barInfo['bar'];
-              final int beat = barInfo['beat'];
+              final musicalTime = timeContext.getMusicalTime(time);
+              final int bar = musicalTime.bar;
+              final int beat = musicalTime.beat;
 
               // 判断是主要标记还是次要标记
               final bool isMainMark = beat == 1; // 每小节的第一拍是主要标记
@@ -120,7 +125,7 @@ class TimelineRuler extends ConsumerWidget {
                   isMainMark && (bar % barDisplayInterval == 0);
 
               // 使用TimeUtils的方法格式化小节显示
-              String barText = timeUtils.formatBarDisplay(bar);
+              String barText = TimeUtils().formatBarDisplay(bar);
 
               return Positioned(
                 left: markPosition,
@@ -201,11 +206,12 @@ class TimelineRuler extends ConsumerWidget {
   }
 
   /// 根据行持续时间计算应该显示多少个分隔
-  int _calculateDivisionCount(TimeUtils timeUtils, double rowDuration) {
+  int _calculateDivisionCount(TimeContext timeContext, double rowDuration) {
     // 计算这一行大约包含多少个小节
-    final double secondsPerBeat = 60.0 / timeUtils.bpm;
-    final double secondsPerBar = secondsPerBeat * timeUtils.beatsPerBar;
-    final double barsInRow = rowDuration / secondsPerBar;
+    final double secondsPerBeat = timeContext.getSecondsPerBeatAt(rowStartTime);
+    final double secondsPerBar = timeContext.getSecondsPerBarAt(rowStartTime);
+    final double barsInRow =
+        secondsPerBar <= 0 ? 0 : rowDuration / secondsPerBar;
 
     // 计算每小节应该显示的分隔数量（根据持续时间和可用宽度）
     final int divisionsPerBar = _calculateDivisionsPerBar(barsInRow);
@@ -218,7 +224,6 @@ class TimelineRuler extends ConsumerWidget {
   /// 根据小节数动态调整
   int _calculateDivisionsPerBar(double barsInRow) {
     if (barsInRow <= 1) return 4; // 当一行只有一个小节或更少时，显示4个分隔（每拍一个）
-    if (barsInRow <= 2) return 4; // 当一行有2个小节时，显示4个分隔（每拍一个）
     if (barsInRow <= 4) return 2; // 当一行有3-4个小节时，显示2个分隔（每2拍一个）
     if (barsInRow <= 8) return 1; // 当一行有5-8个小节时，只在小节开始处显示分隔
     return 1; // 其他情况也只在小节开始处显示

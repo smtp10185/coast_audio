@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/daw_providers.dart';
 import 'dart:math' as Math;
-import '../../utils/time_utils.dart';
+import '../../utils/time_utils.dart' as tu;
 import 'timeline_ruler.dart';
 import 'track_item.dart';
 import 'playhead.dart';
+import '../../models/track.dart';
 
 /// 时间线内容 - 显示时间轴和轨道内容的主要区域
 class TimelineContent extends ConsumerStatefulWidget {
@@ -210,13 +211,17 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
           return const SizedBox(height: 0); // 返回高度为0的轨道占位
         }
 
+        // --- Always use TrackItem for all visible tracks ---
         return TrackItem(
+          key: ValueKey(
+              'track_${trackIndex}_${rowStartTime}'), // Use consistent key naming
           track: track,
           trackIndex: trackIndex,
           rowStartTime: rowStartTime,
           rowEndTime: rowEndTime,
           viewportWidth: viewportWidth,
         );
+        // --- End change ---
       }),
     );
   }
@@ -276,7 +281,7 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
     final config = ref.read(dawConfigProvider);
     final zoomState = ref.read(zoomProvider);
     final snappingState = ref.read(snappingProvider);
-    final timeUtils = ref.read(timeUtilsProvider);
+    final timeContext = ref.read(tu.timeContextProvider.notifier);
     final viewportWidth = ref.read(viewportWidthProvider);
     final scrollController = ref.read(scrollControllerProvider);
     final playbackNotifier = ref.read(playbackProvider.notifier);
@@ -338,7 +343,7 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
       rawTargetTime,
       isDragging ? _dragStartTime : null, // Pass original time only for drag
       snappingState,
-      timeUtils,
+      timeContext,
     );
 
     // Clamp final time
@@ -365,30 +370,27 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
     double rawTime,
     double? originalTime, // Nullable, only used for drag snap-back
     SnappingState snappingState,
-    TimeUtils timeUtils, // Explicitly use the TimeUtils class type
+    tu.TimeContext timeContext,
   ) {
     if (!snappingState.isEnabled) {
       return rawTime; // Snapping disabled
     }
 
-    final double secondsPerBeat = timeUtils.secondsPerBeat;
-    if (secondsPerBeat <= 0) {
-      return rawTime; // Invalid BPM or settings
-    }
-
     double snappingIntervalSeconds;
     switch (snappingState.mode) {
       case SnappingMode.bar:
-        snappingIntervalSeconds = timeUtils.secondsPerBar;
+        snappingIntervalSeconds = timeContext.getSecondsPerBarAt(rawTime);
         break;
       case SnappingMode.beat:
-        snappingIntervalSeconds = secondsPerBeat;
+        snappingIntervalSeconds = timeContext.getSecondsPerBeatAt(rawTime);
         break;
       case SnappingMode.halfBeat:
-        snappingIntervalSeconds = secondsPerBeat / 2.0;
+        snappingIntervalSeconds =
+            timeContext.getSecondsPerBeatAt(rawTime) / 2.0;
         break;
       case SnappingMode.quarterBeat:
-        snappingIntervalSeconds = secondsPerBeat / 4.0;
+        snappingIntervalSeconds =
+            timeContext.getSecondsPerBeatAt(rawTime) / 4.0;
         break;
       case SnappingMode.off:
         return rawTime;
