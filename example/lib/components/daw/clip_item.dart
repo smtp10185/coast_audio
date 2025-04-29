@@ -32,14 +32,6 @@ class ClipItem extends ConsumerWidget {
     final double scaledPixelsPerSecond =
         config.pixelsPerSecond * zoomState.scale;
 
-    // 计算每行可显示的秒数（自适应）
-    final double adaptiveSecondsPerRow =
-        (viewportWidth / scaledPixelsPerSecond).floor().toDouble();
-    final double secondsPerRowScaled =
-        adaptiveSecondsPerRow > config.minSecondsPerRow
-            ? adaptiveSecondsPerRow
-            : config.minSecondsPerRow;
-
     // 检查片段是否在当前行的范围内
     final clipStartTime = clip.startTime;
     final clipEndTime = clip.startTime + clip.duration;
@@ -49,20 +41,11 @@ class ClipItem extends ConsumerWidget {
       return const SizedBox();
     }
 
-    // 计算片段在当前行中的开始和结束时间
-    final double startInRow =
-        (clipStartTime > rowStartTime) ? clipStartTime - rowStartTime : 0;
-    final double endInRow = (clipEndTime < rowEndTime)
-        ? clipEndTime - rowStartTime
-        : rowEndTime - rowStartTime;
-
-    // 计算片段在当前行中的宽度（根据视口宽度自适应）
-    final double clipWidthInRow =
-        (endInRow - startInRow) / (rowEndTime - rowStartTime) * viewportWidth;
-
-    // 计算片段在当前行中的位置（根据视口宽度自适应）
-    final double clipLeftInRow =
-        startInRow / (rowEndTime - rowStartTime) * viewportWidth;
+    // Total width of the clip in pixels based on its duration
+    final double totalClipPixelWidth = clip.duration * scaledPixelsPerSecond;
+    // Position of the clip's left edge relative to the start of the row in pixels
+    final double clipLeftPixel =
+        (clip.startTime - rowStartTime) * scaledPixelsPerSecond;
 
     // 判断是否为当前正在拖动的片段
     final bool isCurrentlyDragging = draggingState.isDragging &&
@@ -74,8 +57,8 @@ class ClipItem extends ConsumerWidget {
 
     return Positioned(
       key: ValueKey('clip_${clip.id}'),
-      left: clipLeftInRow,
-      top: 4, // 调整位置，不再需要为轨道名称留空间
+      left: clipLeftPixel,
+      top: 4,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque, // 确保即使在透明区域也能捕获事件
         onPanStart: (details) {
@@ -135,8 +118,8 @@ class ClipItem extends ConsumerWidget {
         child: MouseRegion(
           cursor: SystemMouseCursors.grab,
           child: Container(
-            width: clipWidthInRow,
-            height: config.trackHeight - 10, // 调整高度，更贴近轨道高度
+            width: totalClipPixelWidth,
+            height: config.trackHeight - 10,
             decoration: BoxDecoration(
               color: isChordClip
                   ? Colors.transparent // 和弦片段使用透明背景
@@ -149,19 +132,8 @@ class ClipItem extends ConsumerWidget {
                         : clip.color,
                 width: isCurrentlyDragging ? 2 : 1,
               ),
-              borderRadius: isChordClip
-                  ? BorderRadius.zero // 和弦片段不需要圆角
-                  : BorderRadius.only(
-                      topLeft: Radius.circular(
-                          clipStartTime >= rowStartTime ? 4 : 0),
-                      bottomLeft: Radius.circular(
-                          clipStartTime >= rowStartTime ? 4 : 0),
-                      topRight:
-                          Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
-                      bottomRight:
-                          Radius.circular(clipEndTime <= rowEndTime ? 4 : 0),
-                    ),
-              // 拖动时添加阴影效果
+              borderRadius:
+                  isChordClip ? BorderRadius.zero : BorderRadius.circular(4),
               boxShadow: isCurrentlyDragging && !isChordClip
                   ? [
                       BoxShadow(
@@ -172,7 +144,7 @@ class ClipItem extends ConsumerWidget {
                     ]
                   : null,
             ),
-            child: _buildClipContent(clipWidthInRow, isChordClip),
+            child: _buildClipContent(totalClipPixelWidth, isChordClip),
           ),
         ),
       ),

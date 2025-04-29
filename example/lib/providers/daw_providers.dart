@@ -497,6 +497,36 @@ class TracksNotifier extends StateNotifier<List<Track>> {
     print("Updated clip $clipId in track $trackIndex");
   }
 
+  // Replaces the entire clips list for a track - used after reordering
+  void reorderClipsInTrack(int trackIndex, List<Clip> newClipsOrder) {
+    if (trackIndex < 0 || trackIndex >= state.length) {
+      print("Error reordering clips: Invalid track index $trackIndex");
+      return;
+    }
+    // Ensure clip IDs are preserved correctly if creating new Clip instances,
+    // but passing the already reordered list of existing Clip instances is better.
+
+    final newState = List<Track>.from(state);
+    final targetTrack = newState[trackIndex];
+
+    // Create a new Track object with the reordered clips list
+    // Make sure to copy other properties correctly
+    newState[trackIndex] = Track(
+      name: targetTrack.name,
+      clips: List<Clip>.from(newClipsOrder), // Use a copy of the new order
+      type: targetTrack.type,
+      isVisible: targetTrack.isVisible,
+      isMuted: targetTrack.isMuted,
+      isSolo: targetTrack.isSolo,
+      volume: targetTrack.volume,
+      pan: targetTrack.pan,
+    );
+
+    // Update the state
+    state = newState;
+    print("Reordered clips in track $trackIndex (Visual order updated)");
+  }
+
   // Delete a clip from a specific track
   void deleteClip(int trackIndex, String clipId) {
     // ... (existing deleteClip implementation, if any) ...

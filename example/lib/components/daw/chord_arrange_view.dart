@@ -264,33 +264,68 @@ class _ChordArrangeViewState extends ConsumerState<ChordArrangeView> {
 
   void _reorderChords(int trackIndex, int oldIndex, int newIndex) {
     if (trackIndex == -1) return;
-    print("Reorder attempt: old=$oldIndex, new=$newIndex");
-    // TODO: Implement the complex logic for reordering and recalculating start times
-    // This involves:
-    // 1. Getting the current list of clips.
-    // 2. Removing the item at oldIndex and inserting it at newIndex.
-    // 3. Iterating through the reordered list from the *start* (or at least from the first affected index).
-    // 4. For each clip, calculate its startTime based on the *previous* clip's startTime + duration.
-    // 5. Calling updateClipInTrack for *each* clip whose startTime changed.
-    // This requires access to TimeContext for accurate duration calculations if durations are based on beats.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('拖动排序功能暂未完全实现')),
-    );
-    // --- Placeholder state update (visual only, no time recalculation) ---
-    setState(() {
-      final tracks = ref.read(tracksProvider);
-      final chordTrack = _findChordTrack(tracks);
-      if (chordTrack != null) {
-        final clips = List<model_clip.Clip>.from(chordTrack.clips);
-        final item = clips.removeAt(oldIndex);
-        // Adjust index if item is moved downwards
-        final insertIndex = oldIndex < newIndex ? newIndex - 1 : newIndex;
-        clips.insert(insertIndex, item);
-        // This setState visually reorders but doesn't save or recalculate times yet
-        // A full implementation needs to call the notifier.
+
+    final tracksNotifier = ref.read(tracksProvider.notifier);
+
+    // --- 1. Get original list and create reordered list in memory ---
+    final originalClips =
+        List<model_clip.Clip>.from(ref.read(tracksProvider)[trackIndex].clips);
+    if (oldIndex < 0 || oldIndex >= originalClips.length) {
+      print("Reorder error: oldIndex out of bounds");
+      return;
+    }
+
+    final reorderedClipsInMemory = List<model_clip.Clip>.from(originalClips);
+    final item = reorderedClipsInMemory.removeAt(oldIndex);
+    final insertIndex = oldIndex < newIndex ? newIndex - 1 : newIndex;
+    if (insertIndex < 0 || insertIndex > reorderedClipsInMemory.length) {
+      print("Reorder error: insertIndex out of bounds");
+      return;
+    }
+    reorderedClipsInMemory.insert(insertIndex, item);
+
+    // --- 2. Update the provider state with the new visual order ---
+    tracksNotifier.reorderClipsInTrack(trackIndex, reorderedClipsInMemory);
+
+    // --- 3. Recalculate start times using the helper method ---
+    _recalculateStartTimes(trackIndex);
+  }
+
+  // --- Helper method to recalculate start times for all clips in a track ---
+  void _recalculateStartTimes(int trackIndex) {
+    if (trackIndex == -1) return;
+
+    final tracksNotifier = ref.read(tracksProvider.notifier);
+    // Read the latest state *after* potential reordering or duration change
+    final currentClips = ref.read(tracksProvider)[trackIndex].clips;
+
+    double cumulativeTime = 0.0;
+    bool timeUpdated = false;
+
+    // Iterate through the clips in the current order
+    for (final clip in currentClips) {
+      final expectedStartTime = cumulativeTime;
+
+      // Check if the startTime needs updating (use tolerance)
+      if ((clip.startTime - expectedStartTime).abs() > 0.001) {
+        // Call updateClipInTrack to *only* change the startTime
+        tracksNotifier.updateClipInTrack(
+          trackIndex,
+          clip.id,
+          newStartTime: expectedStartTime,
+        );
+        timeUpdated = true;
       }
-    });
-    // --- End Placeholder ---
+      // Add the duration of the *current clip* to the cumulative time
+      cumulativeTime += clip.duration;
+    }
+
+    if (timeUpdated) {
+      print("Recalculated start times for track $trackIndex.");
+    }
+    // else {
+    // print("Start times for track $trackIndex were already correct.");
+    // }
   }
 
   // --- Helper Methods ---
@@ -326,6 +361,9 @@ class _ChordArrangeViewState extends ConsumerState<ChordArrangeView> {
           clip.id,
           newDuration: newDurationSeconds,
         );
+
+    // --- After updating duration, recalculate all subsequent start times ---
+    _recalculateStartTimes(trackIndex);
   }
 }
 
