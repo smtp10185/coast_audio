@@ -81,6 +81,8 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
         // 滚动视图
         NotificationListener<ScrollNotification>(
           onNotification: (notification) {
+            // --- Remove or comment out the auto-scroll disabling logic ---
+            /*
             final playbackNotifier = ref.read(playbackProvider.notifier);
 
             // 检测用户手动滚动
@@ -101,6 +103,9 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
                 }
               }
             }
+            */
+            // We might still want to listen for other scroll events later,
+            // but for now, just return false.
             return false;
           },
           child: SingleChildScrollView(
@@ -110,21 +115,6 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
               onTapDown: (details) {
                 _handlePlayheadPositionUpdate(details.globalPosition,
                     isDragging: false);
-              },
-              onPanStart: (details) {
-                _dragStartTime = ref.read(playbackProvider).position;
-                _handlePlayheadPositionUpdate(details.globalPosition,
-                    isDragging: true);
-                print("Global pan start: Time=$_dragStartTime");
-              },
-              onPanUpdate: (details) {
-                _handlePlayheadPositionUpdate(details.globalPosition,
-                    isDragging: true);
-              },
-              onPanEnd: (details) {
-                print(
-                    "Global pan end: Final Time=${ref.read(playbackProvider).position}");
-                _dragStartTime = null;
               },
               child: SizedBox(
                 height: rowHeight * rowCount,
@@ -278,6 +268,7 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
   // Helper function to handle both tap and drag updates for playhead position
   void _handlePlayheadPositionUpdate(Offset globalPosition,
       {required bool isDragging}) {
+    // --- Read necessary providers INSIDE the handler ---
     final config = ref.read(dawConfigProvider);
     final zoomState = ref.read(zoomProvider);
     final snappingState = ref.read(snappingProvider);
@@ -291,30 +282,49 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
     // Get RenderBox info again (might have changed)
     RenderBox? timelineRenderBox =
         _timelineAreaKey.currentContext?.findRenderObject() as RenderBox?;
-    if (timelineRenderBox == null || viewportWidth <= 0)
-      return; // Need context and width
+    // Check for valid state BEFORE calculations
+    if (timelineRenderBox == null ||
+        viewportWidth <= 0 ||
+        !scrollController.hasClients) {
+      print(
+          "Warning: Cannot handle position update - missing RenderBox, viewportWidth, or ScrollController client.");
+      return;
+    }
     Offset timelineOffset = timelineRenderBox.localToGlobal(Offset.zero);
 
-    // Calculate scaled pixels per second and seconds per row
+    // --- Recalculate width-dependent values INSIDE the handler ---
     final double scaledPixelsPerSecond =
         config.pixelsPerSecond * zoomState.scale;
+    if (scaledPixelsPerSecond <= 0) {
+      print(
+          "Warning: Cannot handle position update - scaledPixelsPerSecond is zero or negative.");
+      return; // Avoid division by zero
+    }
     final double adaptiveSecondsPerRow =
         (viewportWidth / scaledPixelsPerSecond).floor().toDouble();
     final double secondsPerRowScaled =
         adaptiveSecondsPerRow > config.minSecondsPerRow
             ? adaptiveSecondsPerRow
             : config.minSecondsPerRow;
+    if (secondsPerRowScaled <= 0) {
+      print(
+          "Warning: Cannot handle position update - secondsPerRowScaled is zero or negative.");
+      return; // Avoid division by zero
+    }
 
     // Calculate row height (needs to be consistent)
     final int visibleTrackCount =
         tracks.where((track) => track.isVisible).length;
-    // Note: Use the _calculateVisibleRowHeight from this class, not Playhead's
     final double rowHeight = _calculateVisibleRowHeight(
         config,
         visibleTrackCount,
         draggingState.isDragging,
         draggingState.dragStartTrackIndex);
-    if (rowHeight <= 0) return; // Avoid division by zero
+    if (rowHeight <= 0) {
+      print(
+          "Warning: Cannot handle position update - rowHeight is zero or negative.");
+      return; // Avoid division by zero
+    }
 
     // Calculate vertical position within the scrollable content
     final double contentY =
@@ -322,15 +332,17 @@ class _TimelineContentState extends ConsumerState<TimelineContent> {
 
     // Calculate the target row index
     int targetRowIndex = (contentY / rowHeight).floor();
-    // Clamp row index
-    // final int maxRowIndex = (config.totalSeconds / secondsPerRowScaled).ceil();
+    // Optional: Clamp row index if total duration is known accurately
+    // final int totalDuration = ... // Calculation from build method
+    // final int maxRowIndex = (totalDuration / secondsPerRowScaled).ceil();
     // targetRowIndex = targetRowIndex.clamp(0, maxRowIndex);
+    targetRowIndex = Math.max(0, targetRowIndex); // Ensure non-negative
 
     // Calculate horizontal position within the viewport
     final double contentX = globalPosition.dx - timelineOffset.dx;
 
-    // Calculate time within that row
-    final double timeInRow = (contentX / viewportWidth) * secondsPerRowScaled;
+    // Calculate time within that row using the freshly calculated values
+    final double timeInRow = contentX / scaledPixelsPerSecond;
 
     // Calculate the target row's start time
     final double targetRowStartTime = targetRowIndex * secondsPerRowScaled;
